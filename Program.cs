@@ -35,6 +35,8 @@ using GetProductWideSetting = System.Func<CoinbasePro.Shared.Types.ProductType, 
 using SetProductWideSetting = System.Action<CoinbasePro.Shared.Types.ProductType, bool>;
 using ProductWideSetting = System.Tuple<System.Func<CoinbasePro.Shared.Types.ProductType, bool>,
 	System.Action<CoinbasePro.Shared.Types.ProductType, bool>>;
+using System.Configuration;
+using Authenticator = CoinbasePro.Network.Authentication.Authenticator;
 
 namespace CoinbaseProToolsForm
 {
@@ -59,12 +61,9 @@ namespace CoinbaseProToolsForm
 		[STAThread]
 		static void Main()
 		{
-			
-			//var coinbaseProClient = new CoinbasePro.CoinbaseProClient(authenticator);
+		
 			var myClient = new QueuedHttpClient();
-			//var cbClient = new CoinbaseProClient(authenticator,myClient);
-			var cbClient = new CoinbaseProClient();
-			//var cbClient = new CoinbaseProClient(authenticator);
+			var cbClient = new CoinbaseProClient(CreateAuthenticator(),myClient);
 
 			var state = new State();
 			InitState(state, cbClient);
@@ -73,6 +72,22 @@ namespace CoinbaseProToolsForm
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(false);
 			PerpetuallyRunTheForm(state, cbClient);
+		}
+
+		static Authenticator CreateAuthenticator()
+		{
+			ExeConfigurationFileMap configMap = new ExeConfigurationFileMap();
+			configMap.ExeConfigFilename = @"..\..\secret.config";
+			Configuration config = ConfigurationManager.OpenMappedExeConfiguration(configMap, ConfigurationUserLevel.None);
+
+			AppSettingsSection section = (AppSettingsSection)config.GetSection("coinbase");
+			var apiKey= (string)section.Settings["apiKey"].Value;
+			var unsignedSignature= (string)section.Settings["unsignedSignature"].Value;
+			var passPhrase= (string)section.Settings["passPhrase"].Value;
+
+			var authenticator = new CoinbasePro.Network.Authentication.Authenticator(apiKey, unsignedSignature, passPhrase);
+
+			return authenticator;
 		}
 
 		static string FormatExceptionText(string text)
@@ -283,9 +298,9 @@ namespace CoinbaseProToolsForm
 					Trigger.CreateRapidPriceChangeTrigger(180*1000, -1.0M, fDecreaseMsg, isEnabledFunc,
 						isSpeechEnabled), // Down 1% in 2 minutes or less
 
-					Trigger.CreateRapidPriceChangeTrigger(20*1000, +0.05M, fIncreaseMsg, isEnabledFunc,
+					Trigger.CreateRapidPriceChangeTrigger(20*1000, +0.5M, fIncreaseMsg, isEnabledFunc,
 						isSpeechEnabled), // Up 0.5% in 20 seconds or less
-					Trigger.CreateRapidPriceChangeTrigger(20*1000, -0.05M, fDecreaseMsg, isEnabledFunc,
+					Trigger.CreateRapidPriceChangeTrigger(20*1000, -0.5M, fDecreaseMsg, isEnabledFunc,
 						isSpeechEnabled), // Down 0.5% in 20 seconds or less
 
 #if DEBUG

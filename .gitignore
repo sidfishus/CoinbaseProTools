@@ -8,3 +8,4 @@
 /packages
 /bin
 /obj/Release
+/secret.config
