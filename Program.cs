@@ -48,9 +48,9 @@ namespace CoinbaseProToolsForm
 			ProductType.LinkGbp,
 			ProductType.AlgoGbp,
 #if !DEBUG
-			ProductType.CgldGbp,
-			ProductType.NuGbp,
-			ProductType.BtcGbp,
+			//ProductType.CgldGbp,
+			//ProductType.NuGbp,
+			//ProductType.BtcGbp,
 #endif
 		};
 
@@ -420,7 +420,6 @@ namespace CoinbaseProToolsForm
 			};
 		}
 
-		//sidtodo this isn't working: creating 2 copies of the dictionary :/
 		static ProductWideSetting CreateProductWideSetting()
 		{
 			Dictionary<ProductType, bool> enabledDictionary = new Dictionary<ProductType, bool>();

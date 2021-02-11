@@ -34,7 +34,7 @@ namespace CoinbaseProToolsForm
 			else if (Library.StringCompareNoCase(cmdSplit[1], "RPC") ||
 				Library.StringCompareNoCase(cmdSplit[1], "RAPIDPRICECHANGE"))
 			{
-				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, speechEnabledSetting, enable);
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidPriceChangeEnabled, enable);
 			}
 			else if (Library.StringCompareNoCase(cmdSplit[1], "SPEECH") ||
 				Library.StringCompareNoCase(cmdSplit[1], "SPEAK"))
