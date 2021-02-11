@@ -3,3 +3,8 @@
 ################################################################################
 
 /obj/Debug
+/.vs/CoinbaseProToolsForm/v15/Server/sqlite3
+/.vs/CoinbaseProToolsForm/v15
+/packages
+/bin
+/obj/Release
