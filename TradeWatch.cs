@@ -75,6 +75,20 @@ namespace CoinbaseProToolsForm
 					 HandleExceptions, slUpdateTriggers, newTradesTriggers,
 					 getProdStats);
 			}
+			else if (StringCompareNoCase(cmdSplit[1], "TEST8"))
+			{
+				// Test the steady price increase/decrease trigger
+				Test8(cbClient, EventOutput,
+					 HandleExceptions, slUpdateTriggers, newTradesTriggers,
+					 getProdStats);
+			}
+			else if (StringCompareNoCase(cmdSplit[1], "TEST9"))
+			{
+				// Test the large sell trigger
+				Test9(cbClient, EventOutput,
+					 HandleExceptions, slUpdateTriggers, newTradesTriggers,
+					 getProdStats);
+			}
 			else if (StringCompareNoCase(cmdSplit[1], "SHOWLEVEL"))
 			{
 				return ShowLevel(cmdSplit, tradeHistoryState, getProdStats, false, getActiveProduct());
@@ -248,6 +262,63 @@ namespace CoinbaseProToolsForm
 			var prod = ProductType.LinkGbp;
 
 			TradeHistory.Test(cbClient, EventOutput, pagedTrades, slUpdateTriggers[prod],
+				HandleExceptions, newTradesTriggers[prod], prod, getProductStats);
+		}
+
+		// Test steady price increase
+		private static void Test8(CoinbaseProClient cbClient,
+			EventOutputter EventOutput,
+			Action<Exception> HandleExceptions,
+			Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers,
+			Dictionary<ProductType, NewTradesTriggerList> newTradesTriggers,
+			Func<ProductStatsDictionary> getProductStats)
+		{
+
+			decimal startPrice = 20.00M;
+			var now = DateTime.Now;
+
+			CBProductTrade[] trades =
+			{
+				new CBProductTrade(){Price=startPrice, Size=1002M, Side=OrderSide.Sell, Time=now},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0051M), Size=1M, Side=OrderSide.Sell, Time=now.AddMinutes(3)},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0101M), Size=1003M, Side=OrderSide.Sell, Time=now.AddMinutes(6)},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0101M), Size=1003M, Side=OrderSide.Sell, Time=now.AddMinutes(7)},
+			};
+
+			var prod = ProductType.LinkGbp;
+
+			TradeHistory.Test(cbClient, EventOutput, trades, slUpdateTriggers[prod],
+				HandleExceptions, newTradesTriggers[prod], prod, getProductStats);
+		}
+
+		// Test large buy/sell
+		private static void Test9(CoinbaseProClient cbClient,
+			EventOutputter EventOutput,
+			Action<Exception> HandleExceptions,
+			Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers,
+			Dictionary<ProductType, NewTradesTriggerList> newTradesTriggers,
+			Func<ProductStatsDictionary> getProductStats)
+		{
+
+			decimal startPrice = 20.00M;
+			var now = DateTime.Now;
+
+			var prod = ProductType.LinkGbp;
+
+			var prodStats = getProductStats()[prod];
+			decimal twoPercentOf24HourVol = prodStats.Volume * 0.02M;
+
+			OrderSide orderSide = OrderSide.Sell;
+
+			CBProductTrade[] trades =
+			{
+				new CBProductTrade(){Price=startPrice, Size=1002M, Side=orderSide, Time=now},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0051M), Size=twoPercentOf24HourVol/2, Side=orderSide, Time=now.AddSeconds(1)},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0101M), Size=twoPercentOf24HourVol/2, Side=orderSide, Time=now.AddSeconds(2)},
+				new CBProductTrade(){Price=startPrice+(startPrice*0.0101M), Size=1003M, Side=orderSide, Time=now.AddMinutes(1)},
+			};
+
+			TradeHistory.Test(cbClient, EventOutput, trades, slUpdateTriggers[prod],
 				HandleExceptions, newTradesTriggers[prod], prod, getProductStats);
 		}
 

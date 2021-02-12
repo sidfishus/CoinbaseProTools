@@ -109,10 +109,15 @@ namespace CoinbaseProToolsForm
 
 			ProductWideSetting rapidPriceChangeSetting = CreateProductWideSetting();
 			ProductWideSetting speechSetting = CreateProductWideSetting();
+			ProductWideSetting rapidLargeVolumeUp = CreateProductWideSetting();
+			ProductWideSetting rapidLargeVolumeDown = CreateProductWideSetting(); //sidtodo not in use yet
+			ProductWideSetting steadyPriceIncreaseTrigger = CreateProductWideSetting();
+			ProductWideSetting steadyPriceDecreaseTrigger = CreateProductWideSetting();
 
-			var twTriggers = CreateTradeWatchTriggers(state, getActiveProduct);
+			var twTriggers = CreateTradeWatchTriggers(state, getActiveProduct,
+				steadyPriceIncreaseTrigger.Item1, steadyPriceDecreaseTrigger.Item1, speechSetting.Item1);
 			var newTradesTriggers= CreateNewTradesTriggers(state, rapidPriceChangeSetting.Item1,
-				speechSetting.Item1);
+				speechSetting.Item1, rapidLargeVolumeUp.Item1, rapidLargeVolumeDown.Item1);
 			var addNewTradesTrigger = CreateAddNewTradesTrigger(newTradesTriggers);
 			var removeNewTradesTrigger= CreateRemoveNewTradesTrigger();
 			var exceptionFileWriter = CreateExceptionFileWriter();
@@ -190,7 +195,7 @@ namespace CoinbaseProToolsForm
 					eventOutputter = form.eventOutputter;
 
 #if DEBUG
-					//tradeHistoryInitialised = true;
+					tradeHistoryInitialised = true; //sidtodo
 #endif
 
 					if (!tradeHistoryInitialised)
@@ -251,7 +256,8 @@ namespace CoinbaseProToolsForm
 		}
 
 		static Dictionary<ProductType,NewTradesTriggerList> CreateNewTradesTriggers(State state,
-			GetProductWideSetting getRapidPriceChangeEnabled, GetProductWideSetting getSpeechEnabled)
+			GetProductWideSetting getRapidPriceChangeEnabled, GetProductWideSetting getSpeechEnabled,
+			GetProductWideSetting getRapidLargeVolumeUp, GetProductWideSetting getRapidLargeVolumeDown)
 		{
 
 			Func<ProductType, Func<int, decimal, string>> priceDecreaseMessageFunc = (productType) =>
@@ -272,6 +278,24 @@ namespace CoinbaseProToolsForm
 				};
 			};
 
+			Func<ProductType, Func<int, decimal, string>> largeVolumeIncreaseMessageFunc = (productType) =>
+			{
+				return (timeDiff, volChangeRatio) =>
+				{
+					return $"{Products.GetProductSpokenName(productType)} large buy, " +
+						$"{Decimal.Round(volChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+				};
+			};
+
+			Func<ProductType, Func<int, decimal, string>> largeVolumeDecreaseMessageFunc = (productType) =>
+			{
+				return (timeDiff, volChangeRatio) =>
+				{
+					return $"{Products.GetProductSpokenName(productType)} large sell, " +
+						$"{Decimal.Round(volChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+				};
+			};
+
 			var rv = new Dictionary<ProductType, NewTradesTriggerList>();
 
 			Array.ForEach(products, (product) =>
@@ -279,30 +303,38 @@ namespace CoinbaseProToolsForm
 
 				var triggerList = new NewTradesTriggerList();
 
-				var fIncreaseMsg = priceIncreaseMessageFunc(product);
-				var fDecreaseMsg = priceDecreaseMessageFunc(product);
+				var fRapidIncreaseMsg = priceIncreaseMessageFunc(product);
+				var fRapidDecreaseMsg = priceDecreaseMessageFunc(product);
+
+				Func<int,decimal,string> fLargeBuyMsg = largeVolumeIncreaseMessageFunc(product);
+				Func<int, decimal, string> fLargeSellMsg = largeVolumeDecreaseMessageFunc(product);
 
 				Func<bool> isEnabledFunc = () => getRapidPriceChangeEnabled(product);
 				Func<bool> isSpeechEnabled = () => getSpeechEnabled(product);
+				Func<bool> largeBuyIsEnabled = () => getRapidLargeVolumeUp(product);
+				Func<bool> largeSellIsEnabled = () => getRapidLargeVolumeDown(product);
+
+				var productInfo = Products.productInfo[product];
 
 				triggerList.triggers.AddRange(new NewTradesTriggerState[]{
 
-					Trigger.CreateRapidPriceChangeTrigger(300*1000, +2.0M, fIncreaseMsg, isEnabledFunc,
-						isSpeechEnabled), // Up 2% in 5 minutes or less
-					Trigger.CreateRapidPriceChangeTrigger(300*1000, -2.0M, fDecreaseMsg, isEnabledFunc,
-							isSpeechEnabled), // Down 2% in 5 minutes or less
+					Trigger.CreateRapidPriceChangeTrigger(300*1000, +0.8M*productInfo.volatilityFactor,
+						fRapidIncreaseMsg, isEnabledFunc, isSpeechEnabled),
+					Trigger.CreateRapidPriceChangeTrigger(300*1000, -0.8M*productInfo.volatilityFactor,
+						fRapidDecreaseMsg, isEnabledFunc,isSpeechEnabled),
 
-					//sidtodo these can be on the summary levels instead.
-					Trigger.CreateRapidPriceChangeTrigger(180*1000, +1.0M, fIncreaseMsg, isEnabledFunc,
-						isSpeechEnabled), // Up 1% in 2 minutes or less
-					Trigger.CreateRapidPriceChangeTrigger(180*1000, -1.0M, fDecreaseMsg, isEnabledFunc,
-						isSpeechEnabled), // Down 1% in 2 minutes or less
+					Trigger.CreateRapidPriceChangeTrigger(90*1000, +0.4M*productInfo.volatilityFactor,
+						fRapidIncreaseMsg, isEnabledFunc,isSpeechEnabled),
+					Trigger.CreateRapidPriceChangeTrigger(90*1000, -0.4M*productInfo.volatilityFactor,
+						fRapidDecreaseMsg, isEnabledFunc,isSpeechEnabled),
 
-					Trigger.CreateRapidPriceChangeTrigger(20*1000, +0.5M, fIncreaseMsg, isEnabledFunc,
-						isSpeechEnabled), // Up 0.5% in 20 seconds or less
-					Trigger.CreateRapidPriceChangeTrigger(20*1000, -0.5M, fDecreaseMsg, isEnabledFunc,
-						isSpeechEnabled), // Down 0.5% in 20 seconds or less
+					//sidtodo volatility factor for volume????
+					//sidtodo test these for algorand
+					Trigger.CreateRapidBuyOrSell(10*1000,+1,fLargeBuyMsg,largeBuyIsEnabled,isSpeechEnabled,product),
+					Trigger.CreateRapidBuyOrSell(10*1000,-1,fLargeSellMsg,largeSellIsEnabled,isSpeechEnabled,product),
 
+					Trigger.CreateRapidBuyOrSell(60*1000,+2,fLargeBuyMsg,largeBuyIsEnabled,isSpeechEnabled,product),
+					Trigger.CreateRapidBuyOrSell(60*1000,-2,fLargeSellMsg,largeSellIsEnabled,isSpeechEnabled,product),
 #if DEBUG
 
 					//Trigger.CreateRapidPriceChangeTrigger(100*1000, +0.003M, fIncreaseMsg),
@@ -319,8 +351,10 @@ namespace CoinbaseProToolsForm
 		}
 
 		static Dictionary<ProductType, SLUpdateTriggerList> CreateTradeWatchTriggers(State state,
-			Func<ProductType> getProductType)
+			Func<ProductType> getProductType, GetProductWideSetting steadyPriceIncreaseTrigger,
+			GetProductWideSetting steadyPriceDecreaseTrigger, GetProductWideSetting getSpeechEnabled)
 		{
+
 			// The order is important. If one rule triggers, lesser triggers won't take affect. May
 			// want to control this behaviour at a later date.
 
@@ -335,13 +369,44 @@ namespace CoinbaseProToolsForm
 			//	Trigger.CreateSpeakPriceTrigger(state),
 			//};
 
+			Func<ProductType, Func<int, decimal, string>> steadyPriceDecreaseMessageFunc = (productType) =>
+			{
+				return (timeDiff, priceChangeRatio) =>
+				{
+					return $"{Products.GetProductSpokenName(productType)} steady price decrease, " +
+					 $"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+				};
+			};
+
+			Func<ProductType, Func<int, decimal, string>> steadyPriceIncreaseMessageFunc = (productType) =>
+			{
+				return (timeDiff, priceChangeRatio) =>
+				{
+					return $"{Products.GetProductSpokenName(productType)} steady price increase, " +
+						$"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+				};
+			};
+			
 			var rv = new Dictionary<ProductType, SLUpdateTriggerList>();
 
 			Array.ForEach(Program.products, (product) =>
 			{
+
+				Func<bool> isSpeechEnabled = () => getSpeechEnabled(product);
+
+				var fSteadyIncreaseMsg = steadyPriceIncreaseMessageFunc(product);
+				var fSteadyDecreaseMsg = steadyPriceDecreaseMessageFunc(product);
+							  
+				Func<bool> steadyPriceIncreaseEnabled = () => steadyPriceIncreaseTrigger(product);
+				Func<bool> steadyPriceDecreaseEnabled = () => steadyPriceDecreaseTrigger(product);
+
 				var list = new SLUpdateTriggerList();
 				list.triggers.AddRange(new SLUpdateTriggerState[]{
 					Trigger.CreateBullRunTradeWatchTrigger(product),
+					Trigger.CreateSteadyPriceChangeTrigger(20*60,+2,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
+					Trigger.CreateSteadyPriceChangeTrigger(20*60,-2,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
+					Trigger.CreateSteadyPriceChangeTrigger(10*60,+1,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
+					Trigger.CreateSteadyPriceChangeTrigger(10*60,-1,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
 					Trigger.CreateSpeakPriceTrigger(state, getProductType, product)
 				});
 

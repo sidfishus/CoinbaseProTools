@@ -436,6 +436,84 @@ namespace CoinbaseProToolsForm
 		//	return rule;
 		//}
 
+		public static SLUpdateTriggerState CreateSteadyPriceChangeTrigger(int durationSecs,
+			decimal percentageToChange, Func<int, decimal, string> getAlertMessage,
+			Func<bool> fIsEnabled, Func<bool> fIsSpeechEnabled)
+		{
+			DateTimeOffset lastTimeSpoken = DateTime.Now.AddDays(-1);
+			var rule = new SLUpdateTriggerState();
+
+			rule.TriggerFunc = (summaryLevels, getProdStats, tsOfEvent) =>
+			{
+				if (!fIsEnabled()) return null;
+
+				var now = DateTime.Now;
+				if ((now - lastTimeSpoken).TotalSeconds <= durationSecs)
+				{
+					return null;
+				}
+
+				// 10 minutes in units.
+				int numLevel1Units = (int)(durationSecs / TradeSummary.singleUnitOfTimeSecs);
+
+				var tenMinSummary = TradeSummary.GetTradeSummary(numLevel1Units, summaryLevels);
+
+				if (TradeSummary.NumTrades(tenMinSummary) == 0) return null;
+
+				decimal priceDiffPercentage;
+				if (tenMinSummary.lowPriceTs < tenMinSummary.highPriceTs)
+				{
+					// Price gone up.
+					decimal priceDiff = tenMinSummary.highPrice - tenMinSummary.lowPrice;
+					priceDiffPercentage = (priceDiff / tenMinSummary.lowPrice) * 100;
+				}
+				else
+				{
+					decimal priceDiff = tenMinSummary.lowPrice - tenMinSummary.highPrice;
+					priceDiffPercentage = (priceDiff / tenMinSummary.highPrice) * 100;
+				}
+
+				bool matchesTrigger = false;
+
+				if (percentageToChange > 0 && priceDiffPercentage >= percentageToChange)
+				{
+					matchesTrigger = true;
+				}
+				else if (percentageToChange < 0 && priceDiffPercentage <= percentageToChange)
+				{
+					matchesTrigger = true;
+				}
+
+				if (matchesTrigger)
+				{
+					int timeDiffMs = Math.Abs((int)(tenMinSummary.lowPriceTs - tenMinSummary.highPriceTs).TotalMilliseconds);
+
+					var text = getAlertMessage(timeDiffMs, priceDiffPercentage);
+
+					if (fIsSpeechEnabled())
+					{
+						Library.AsyncSpeak(text);
+					}
+
+					// The event happened at the later time.
+					if (tenMinSummary.lowPriceTs < tenMinSummary.highPriceTs)
+					{
+						lastTimeSpoken = tenMinSummary.highPriceTs;
+					}
+					else
+					{
+						lastTimeSpoken = tenMinSummary.lowPriceTs;
+					}
+
+					return new EventOutput[] { new EventOutput(text, lastTimeSpoken) };
+				}
+
+				return null;
+			};
+
+			return rule;
+		}
+
 		//sidtodo do a rapid mode.
 		//sidtodo move this to new trades???
 		public static SLUpdateTriggerState CreateSpeakPriceTrigger(State state,
@@ -508,26 +586,125 @@ namespace CoinbaseProToolsForm
 			return rule;
 		}
 
-		//public static NewTradesTriggerState CreateRapidBuyOrSell(int durationMs,
-		//	decimal volumePercentage, Func<int, decimal, string> getAlertMessage,
-		//	Func<bool> fIsEnabled, Func<bool> fIsSpeechEnabled)
-		//{
-		//	int lastTradeId = 0;
+		//sidtodo check out of the ordinary volume
+		public static NewTradesTriggerState CreateRapidBuyOrSell(int durationMs,
+			decimal volumePercentageToChange, Func<int, decimal, string> getAlertMessage,
+			Func<bool> fIsEnabled, Func<bool> fIsSpeechEnabled, ProductType productType)
+		{
+			int lastTradeId = 0;
 
-		//	var rule = new NewTradesTriggerState();
+			var rule = new NewTradesTriggerState();
 
-		//	OrderSide orderSideOfTrigger = (volumePercentage > 0) ? OrderSide.Sell : OrderSide.Buy;
+			OrderSide orderSideOfTrigger = (volumePercentageToChange > 0) ? OrderSide.Sell : OrderSide.Buy;
 
-		//	//DateTime lastTimeSpoken = DateTime.Now.AddDays(-1);
+			//sidtodo here: should this be the date of teh outerindex or innerindex?
+			DateTime lastTimeSpoken = DateTime.Now.AddDays(-1);
 
-		//	rule.triggerType = NewTradesTriggerState.eTriggerType.builtIn;
+			rule.triggerType = NewTradesTriggerState.eTriggerType.builtIn;
 
-		//	rule.TriggerFunc = (summaryLevels, getProdStats, recentTrades) =>
-		//	{
-		//	};
-		//}
+			rule.TriggerFunc = (summaryLevels, getProdStats, recentTrades) =>
+			{
+				if (fIsEnabled() != true) return null;
 
-		//sidtodo there is a bug in this. repeats the same msg multi times.????
+				// Once per duration.
+				//sidtodo is this right? don't we want to do it per instance by using the last trade ID????
+				var now = DateTime.Now;
+				if ((int)(now - lastTimeSpoken).TotalMilliseconds < durationMs)
+				{
+					return null;
+				}
+
+				var thisProductProdStats = getProdStats()[productType];
+
+				decimal accumulatedVolume = 0;
+				CBProductTrade currentOuterTrade = null;
+				decimal largedAccumulatedVolume = 0;
+				CBProductTrade currentInnerTrade = null;
+				int largestVolumeMs=0;
+
+				CBProductTrade matchingOuterTrade = null;
+				CBProductTrade matchingInnerTrade = null;
+
+				Action updateLargeestAccumulatedVolume = () =>
+				{
+					if (currentOuterTrade != null)
+					{
+						if (accumulatedVolume > largedAccumulatedVolume)
+						{
+							matchingOuterTrade = currentOuterTrade;
+							matchingInnerTrade = currentInnerTrade;
+
+							largedAccumulatedVolume = accumulatedVolume;
+							largestVolumeMs = (int)(currentOuterTrade.Time - currentInnerTrade.Time).TotalMilliseconds;
+						}
+					}
+				};
+
+				FindRecentTradesCallback callback = (outerTrade, innerTrade) =>
+				{
+
+					// Within the time frame??
+					int timeDiffMs = (int)(outerTrade.Time - innerTrade.Time).TotalMilliseconds;
+					if (timeDiffMs >= durationMs)
+					{
+						return new FindRecentTradesCallbackRv(false /* No match */, false /* Don't stop */,
+							true /* Move outer index along - outside time range */, null);
+					}
+
+					if (currentOuterTrade ==null || currentOuterTrade.TradeId != outerTrade.TradeId)
+					{
+
+						updateLargeestAccumulatedVolume();
+
+						currentOuterTrade = outerTrade;
+
+						// Reset the volume
+						accumulatedVolume = outerTrade.Size;
+					}
+
+					currentInnerTrade = innerTrade;
+
+					accumulatedVolume += innerTrade.Size;
+
+					return new FindRecentTradesCallbackRv(false, false /* Don't stop */,
+						false /* Don't increment outer index */, null);
+
+				};
+
+				FindRecentTrades(recentTrades, orderSideOfTrigger, callback, ref lastTradeId);
+
+				updateLargeestAccumulatedVolume();
+
+				decimal largestAccumulatedVolumePercentageOf24Hour = (largedAccumulatedVolume / thisProductProdStats.Volume) * 100;
+
+				//sidtodo volatility factor is passed in.
+
+				if (largestAccumulatedVolumePercentageOf24Hour >= Math.Abs(volumePercentageToChange))
+				{
+					if (volumePercentageToChange < 0)
+					{
+						largestAccumulatedVolumePercentageOf24Hour *= -1;
+					}
+
+					var text = getAlertMessage(largestVolumeMs, largestAccumulatedVolumePercentageOf24Hour);
+
+					if (fIsSpeechEnabled())
+					{
+						Library.AsyncSpeak(text);
+					}
+
+					lastTimeSpoken = now; //sidtodo here: should this be the time of the inner trade or the outer trade????
+
+					return new EventOutput[] { new EventOutput(text, matchingOuterTrade.Time) };
+				}
+
+				return null;
+
+			};
+
+			return rule;
+		}
+
 		public static NewTradesTriggerState CreateRapidPriceChangeTrigger(int durationMs,
 			decimal percentageToChange, Func<int, decimal, string> getAlertMessage,
 			Func<bool> fIsEnabled, Func<bool> fIsSpeechEnabled)
@@ -536,7 +713,7 @@ namespace CoinbaseProToolsForm
 
 			var rule = new NewTradesTriggerState();
 
-			OrderSide orderSideOfTrigger = (percentageToChange > 0) ? OrderSide.Sell : OrderSide.Buy;
+			//OrderSide orderSideOfTrigger = (percentageToChange > 0) ? OrderSide.Sell : OrderSide.Buy;
 
 			DateTime lastTimeSpoken = DateTime.Now.AddDays(-1);
 
@@ -547,6 +724,7 @@ namespace CoinbaseProToolsForm
 
 				if (fIsEnabled() != true) return null;
 
+				//sidtodo don't think this is needed - don't we want to do it per instance by using the last trade ID??
 				// Once per duration.
 				var now = DateTime.Now;
 				if ((int)(now - lastTimeSpoken).TotalMilliseconds < durationMs)
@@ -583,7 +761,7 @@ namespace CoinbaseProToolsForm
 
 				int orgLastTradeId = lastTradeId;
 
-				MatchingRecentTrades matchingTrades = FindRecentTrades(recentTrades, orderSideOfTrigger, callback, ref lastTradeId);
+				MatchingRecentTrades matchingTrades = FindRecentTrades(recentTrades, null, callback, ref lastTradeId);
 
 				if (matchingTrades != null)
 				{
@@ -597,7 +775,7 @@ namespace CoinbaseProToolsForm
 						Library.AsyncSpeak(text);
 					}
 
-					lastTimeSpoken = now;
+					lastTimeSpoken = now; //sidtodo here: should this be the time of the inner trade or the outer trade????
 
 					return new EventOutput[] { new EventOutput(text, recentTrades[matchingTrades.Item1].Time) };
 				}
@@ -609,7 +787,7 @@ namespace CoinbaseProToolsForm
 		}
 
 		public static MatchingRecentTrades FindRecentTrades(List<CBProductTrade> recentTrades,
-			OrderSide orderSide, FindRecentTradesCallback callback, ref int lastTradeId)
+			OrderSide? orderSide, FindRecentTradesCallback callback, ref int lastTradeId)
 		{
 
 			MatchingRecentTrades rv = null;
@@ -628,7 +806,7 @@ namespace CoinbaseProToolsForm
 				}
 
 				// Correct type??
-				if (outerTrade.Side == orderSide)
+				if (orderSide==null || outerTrade.Side == orderSide)
 				{
 
 					for (int ii = i - 1; ii >= 0; --ii)
@@ -636,7 +814,7 @@ namespace CoinbaseProToolsForm
 
 						var innerTrade = recentTrades[ii];
 
-						if (innerTrade.Side == outerTrade.Side)
+						if (orderSide == null || innerTrade.Side == outerTrade.Side)
 						{
 							FindRecentTradesCallbackRv callbackRv = callback(outerTrade, innerTrade);
 
@@ -677,7 +855,7 @@ namespace CoinbaseProToolsForm
 				for (int i = recentTrades.Count - 1; i >= 0; --i)
 				{
 					var iterTrade = recentTrades[i];
-					if (iterTrade.Side == orderSide)
+					if (orderSide == null || iterTrade.Side == orderSide)
 					{
 						lastTradeId = iterTrade.TradeId;
 						break;

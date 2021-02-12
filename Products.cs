@@ -34,6 +34,7 @@ namespace CoinbaseProToolsForm
 		public Func<decimal, string> fOutputNumberOfTrades;
 		public Func<decimal, string> fSpeakPrice;
 		public int numPagesForApprox24Hour;
+		public decimal volatilityFactor; // The higher = more volatile. Link is 1.0
 	}
 
 	public static class Products
@@ -124,6 +125,7 @@ namespace CoinbaseProToolsForm
 			chainLink.fOutputVolume = (volume) => Decimal.Round(volume, 0).ToString().PadLeft(7, ' ');
 			chainLink.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			chainLink.fSpeakPrice = SpeakPriceGbp(2);
+			chainLink.volatilityFactor = 1;
 			chainLink.numPagesForApprox24Hour =40;
 
 			info.Add(ProductType.LinkGbp, chainLink);
@@ -134,6 +136,7 @@ namespace CoinbaseProToolsForm
 			nucypher.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			nucypher.fSpeakPrice = SpeakPriceGbp(4);
 			nucypher.numPagesForApprox24Hour = 40;
+			nucypher.volatilityFactor = 1; //sidtodo don't know
 			info.Add(ProductType.NuGbp, nucypher);
 
 			var algo = new ProductInfo { productType = ProductType.AlgoGbp, name = "Algorand", spokenName = "Algorand", otherNames = new string[] { "algo", "alto", "algogbp" } };
@@ -142,6 +145,7 @@ namespace CoinbaseProToolsForm
 			algo.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			algo.fSpeakPrice = SpeakPriceGbp(4);
 			algo.numPagesForApprox24Hour = 40;
+			algo.volatilityFactor = 2M;
 			info.Add(ProductType.AlgoGbp, algo);
 
 			var bitcoin = new ProductInfo { productType = ProductType.BtcGbp, name = "Bitcoin", spokenName = "Bitcoin", otherNames = new string[] { "btc", "btcgbp" } };
@@ -150,6 +154,7 @@ namespace CoinbaseProToolsForm
 			bitcoin.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			bitcoin.fSpeakPrice = SpeakPriceGbp(0);
 			bitcoin.numPagesForApprox24Hour = 200;
+			bitcoin.volatilityFactor = 1; //sidtodo don't know
 			info.Add(ProductType.BtcGbp, bitcoin);
 
 			var celo = new ProductInfo { productType = ProductType.CgldGbp, name = "Celo", spokenName = "Celo", otherNames = new string[] { "cgld", "cgldgbp" } };
@@ -158,6 +163,7 @@ namespace CoinbaseProToolsForm
 			celo.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			celo.fSpeakPrice = SpeakPriceGbp(2);
 			celo.numPagesForApprox24Hour = 40;
+			celo.volatilityFactor = 1; //sidtodo don't know
 			info.Add(ProductType.CgldGbp, celo);
 
 			return info;

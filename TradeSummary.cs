@@ -13,6 +13,8 @@ namespace CoinbaseProToolsForm
 	public class TradeSummaryState
 	{
 		public TradeSummaryState previous;
+		public DateTimeOffset lowPriceTs;
+		public DateTimeOffset highPriceTs;
 		public decimal buyTotal;
 		public decimal sellTotal;
 		public DateTimeOffset timeStart;
@@ -51,6 +53,10 @@ namespace CoinbaseProToolsForm
 
 		public static void IncrementSummary(TradeSummaryState summary, CBProductTrade trade)
 		{
+
+			Action fUpdateHighAndLowPriceTSConditional =
+				UpdateHighAndLowPriceTSConditional(summary, trade.Time, trade.Time);
+						
 			// This is weird. Trades that come in to here as 'buy' actually show as 'sell' on Coinbase.
 			if (trade.Side == OrderSide.Sell)
 			{
@@ -74,6 +80,28 @@ namespace CoinbaseProToolsForm
 
 				summary.highSellPrice = Math.Max(summary.highSellPrice, trade.Price);
 			}
+
+			fUpdateHighAndLowPriceTSConditional();
+		}
+
+		private static Action UpdateHighAndLowPriceTSConditional(TradeSummaryState summary,
+			DateTimeOffset lowPriceTime, DateTimeOffset highPriceTime)
+		{
+			decimal previousLowPrice = summary.lowPrice;
+			decimal previousHighPrice = summary.highPrice;
+
+			return () =>
+			{
+				if (previousLowPrice == 0 || previousLowPrice > summary.lowPrice)
+				{
+					summary.lowPriceTs = lowPriceTime;
+				}
+
+				if (previousHighPrice == 0 || previousHighPrice < summary.highPrice)
+				{
+					summary.highPriceTs = highPriceTime;
+				}
+			};
 		}
 
 		public static int NumTrades(TradeSummaryState ts)
@@ -149,6 +177,10 @@ namespace CoinbaseProToolsForm
 
 		public static void IncrementSummary(TradeSummaryState lhs, TradeSummaryState rhs)
 		{
+
+			Action fUpdateHighAndLowPriceTSConditional =
+				UpdateHighAndLowPriceTSConditional(lhs, rhs.lowPriceTs, rhs.highPriceTs);
+
 			lhs.buyTotal += rhs.buyTotal;
 			lhs.sellTotal += rhs.sellTotal;
 
@@ -172,6 +204,8 @@ namespace CoinbaseProToolsForm
 
 			lhs.highBuyPrice = Math.Max(lhs.highBuyPrice, rhs.highBuyPrice);
 			lhs.highSellPrice = Math.Max(lhs.highSellPrice, rhs.highSellPrice);
+
+			fUpdateHighAndLowPriceTSConditional();
 		}
 
 		public static DateTimeOffset TradeSummaryEndTime(int level, TradeSummaryState summary)
