@@ -144,8 +144,8 @@ namespace CoinbaseProToolsForm
 			algo.fOutputVolume = (volume) => Decimal.Round(volume, 0).ToString().PadLeft(9, ' ');
 			algo.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
 			algo.fSpeakPrice = SpeakPriceGbp(4);
-			algo.numPagesForApprox24Hour = 40;
-			algo.volatilityFactor = 2M;
+			algo.numPagesForApprox24Hour = 200;
+			algo.volatilityFactor = 3.5M;
 			info.Add(ProductType.AlgoGbp, algo);
 
 			var bitcoin = new ProductInfo { productType = ProductType.BtcGbp, name = "Bitcoin", spokenName = "Bitcoin", otherNames = new string[] { "btc", "btcgbp" } };

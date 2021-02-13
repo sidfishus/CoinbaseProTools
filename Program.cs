@@ -195,7 +195,7 @@ namespace CoinbaseProToolsForm
 					eventOutputter = form.eventOutputter;
 
 #if DEBUG
-					tradeHistoryInitialised = true; //sidtodo
+					//tradeHistoryInitialised = true; //sidtodo
 #endif
 
 					if (!tradeHistoryInitialised)
@@ -323,9 +323,9 @@ namespace CoinbaseProToolsForm
 					Trigger.CreateRapidPriceChangeTrigger(300*1000, -0.8M*productInfo.volatilityFactor,
 						fRapidDecreaseMsg, isEnabledFunc,isSpeechEnabled),
 
-					Trigger.CreateRapidPriceChangeTrigger(90*1000, +0.4M*productInfo.volatilityFactor,
+					Trigger.CreateRapidPriceChangeTrigger(30*1000, +0.4M*productInfo.volatilityFactor,
 						fRapidIncreaseMsg, isEnabledFunc,isSpeechEnabled),
-					Trigger.CreateRapidPriceChangeTrigger(90*1000, -0.4M*productInfo.volatilityFactor,
+					Trigger.CreateRapidPriceChangeTrigger(30*1000, -0.4M*productInfo.volatilityFactor,
 						fRapidDecreaseMsg, isEnabledFunc,isSpeechEnabled),
 
 					//sidtodo volatility factor for volume????
@@ -403,10 +403,11 @@ namespace CoinbaseProToolsForm
 				var list = new SLUpdateTriggerList();
 				list.triggers.AddRange(new SLUpdateTriggerState[]{
 					Trigger.CreateBullRunTradeWatchTrigger(product),
-					Trigger.CreateSteadyPriceChangeTrigger(20*60,+2,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
-					Trigger.CreateSteadyPriceChangeTrigger(20*60,-2,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
-					Trigger.CreateSteadyPriceChangeTrigger(10*60,+1,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
-					Trigger.CreateSteadyPriceChangeTrigger(10*60,-1,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
+					//sidtodo
+					//Trigger.CreateSteadyPriceChangeTrigger(20*60,+2,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
+					//Trigger.CreateSteadyPriceChangeTrigger(20*60,-2,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
+					//Trigger.CreateSteadyPriceChangeTrigger(10*60,+1,fSteadyIncreaseMsg,steadyPriceIncreaseEnabled,isSpeechEnabled),
+					//Trigger.CreateSteadyPriceChangeTrigger(10*60,-1,fSteadyDecreaseMsg,steadyPriceDecreaseEnabled,isSpeechEnabled),
 					Trigger.CreateSpeakPriceTrigger(state, getProductType, product)
 				});
 
