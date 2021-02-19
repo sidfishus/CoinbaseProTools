@@ -20,8 +20,10 @@ namespace CoinbaseProToolsForm
 	public static class Options
 	{
 		public static IEnumerable<string> CmdLine(OptionsState options, string[] cmdSplit, bool? enable,
-			ProductWideSetting getSetRapidPriceChangeEnabled, Func<ProductType> getActiveProduct,
-			ProductWideSetting speechEnabledSetting)
+			ProductWideSetting getSetRapidPriceChangeUpEnabled, ProductWideSetting getSetRapidPriceChangeDownEnabled,
+			Func<ProductType> getActiveProduct,
+			ProductWideSetting speechEnabledSetting,
+			ProductWideSetting getSetRapidLargeBuySetting, ProductWideSetting getSetRapidLargeSellSetting)
 		{
 
 			if (Library.StringCompareNoCase(cmdSplit[1], "SPEAKPRICE"))
@@ -31,15 +33,30 @@ namespace CoinbaseProToolsForm
 				options.SpeakPrice = enable.Value;
 				return null;
 			}
-			else if (Library.StringCompareNoCase(cmdSplit[1], "RPC") ||
-				Library.StringCompareNoCase(cmdSplit[1], "RAPIDPRICECHANGE"))
+			else if (Library.StringCompareNoCase(cmdSplit[1], "RPCU") ||
+				Library.StringCompareNoCase(cmdSplit[1], "RAPIDPRICECHANGEUP"))
 			{
-				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidPriceChangeEnabled, enable);
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidPriceChangeUpEnabled, enable);
+			}
+			else if (Library.StringCompareNoCase(cmdSplit[1], "RPCD") ||
+				Library.StringCompareNoCase(cmdSplit[1], "RAPIDPRICECHANGEDOWN"))
+			{
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidPriceChangeDownEnabled, enable);
 			}
 			else if (Library.StringCompareNoCase(cmdSplit[1], "SPEECH") ||
 				Library.StringCompareNoCase(cmdSplit[1], "SPEAK"))
 			{
 				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, speechEnabledSetting, enable);
+			}
+			else if (Library.StringCompareNoCase(cmdSplit[1], "RLB") ||
+				Library.StringCompareNoCase(cmdSplit[1], "RAPIDLARGEBUY"))
+			{
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidLargeBuySetting, enable);
+			}
+			else if (Library.StringCompareNoCase(cmdSplit[1], "RLS") ||
+				Library.StringCompareNoCase(cmdSplit[1], "RAPIDLARGESELL"))
+			{
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidLargeSellSetting, enable);
 			}
 
 			return new string[] { "Unknown option." };

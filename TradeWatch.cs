@@ -26,6 +26,8 @@ namespace CoinbaseProToolsForm
 	public static class TradeWatch
 	{
 
+		static readonly string s_ShowSummaryCmdLine="tw showsummary <start date> <start time> <end date> <end time>";
+
 		public static async Task<IEnumerable<string>> CmdLine(CoinbaseProClient cbClient,
 			string[] cmdSplit, EventOutputter EventOutput,
 			Func<ProductStatsDictionary> getProdStats,
@@ -112,8 +114,54 @@ namespace CoinbaseProToolsForm
 				return await ShowTrades(cmdSplit, tradeHistoryState, HandleExceptions,
 					cbClient, (price, size) => size > 0, getActiveProduct);
 			}
+			else if (StringCompareNoCase(cmdSplit[1], "SHOWSUMMARY"))
+			{
+				return await ShowSummary(cmdSplit, tradeHistoryState, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient);
+			}
 
 			return null;
+		}
+
+		// tw showsummary <start time> <end time>
+		private static async Task<IEnumerable<string>> ShowSummary(string[] cmdSplit,
+			TradeHistoryState tradeHistoryState,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient)
+		{
+			if (cmdSplit.Length != 6) return new string[] { $"Invalid parameters: {s_ShowSummaryCmdLine}"};
+
+			//sidtodo: this is a library method.
+			string dateTimeFormat = "dd-MM HH:mm";
+			var provider = System.Globalization.CultureInfo.InvariantCulture;
+
+			string startDateStr = cmdSplit[2];
+			string startTimeStr = cmdSplit[3];
+			DateTime startTime;
+			try
+			{
+				startTime = DateTime.ParseExact($"{startDateStr} {startTimeStr}", dateTimeFormat, provider);
+			}
+			catch (Exception)
+			{
+				return new string[] { "Invalid start time"};
+			}
+
+			string endDateStr = cmdSplit[4];
+			string endTimeStr = cmdSplit[5];
+			DateTime endTime;
+			try
+			{
+				endTime = DateTime.ParseExact($"{endDateStr} {endTimeStr}", dateTimeFormat, provider);
+			}
+			catch (Exception)
+			{
+				return new string[] { "Invalid end time" };
+			}
+
+			var product = getActiveProduct();
+			return await TradeHistory.ShowSummary(product, HandleExceptions, cbClient, tradeHistoryState,
+				startTime, endTime, getProdStats()[product]);
 		}
 
 		private static async Task<IEnumerable<string>> ShowTrades(string[] cmdSplit,

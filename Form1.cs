@@ -56,8 +56,11 @@ namespace CoinbaseProToolsForm
 		Dictionary<ProductType, NewTradesTriggerList> newTradesTriggers;
 		Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers;
 
-		ProductWideSetting rapidPriceChangeSetting;
+		ProductWideSetting rapidPriceChangeUpSetting;
+		ProductWideSetting rapidPriceChangeDownSetting;
 		ProductWideSetting speechSetting;
+		ProductWideSetting rapidLargeBuySetting;
+		ProductWideSetting rapidLargeSellSetting;
 
 		public ExceptionUIWriter exceptionUIWriter
 		{
@@ -81,7 +84,11 @@ namespace CoinbaseProToolsForm
 			AddNewTradeTrigger addNewTradeTrigger, RemoveNewTradeTrigger removeNewTradeTrigger,
 			Dictionary<ProductType,NewTradesTriggerList> newTradesTriggers,
 			Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers,
-			ProductWideSetting rapidPriceChangeSetting, ProductWideSetting speechSetting)
+			ProductWideSetting rapidPriceChangeUpSetting,
+			ProductWideSetting rapidPriceChangeDownSetting,
+			ProductWideSetting speechSetting,
+			ProductWideSetting largeBuySetting,
+			ProductWideSetting largeSellSetting)
 		{
 			this.state = state;
 			this.cbClient = cbClient;
@@ -99,8 +106,11 @@ namespace CoinbaseProToolsForm
 			this.removeNewTradeTrigger = removeNewTradeTrigger;
 			this.newTradesTriggers = newTradesTriggers;
 			this.slUpdateTriggers = slUpdateTriggers;
-			this.rapidPriceChangeSetting=rapidPriceChangeSetting;
+			this.rapidPriceChangeUpSetting=rapidPriceChangeUpSetting;
+			this.rapidPriceChangeDownSetting = rapidPriceChangeDownSetting;
 			this.speechSetting = speechSetting;
+			this.rapidLargeBuySetting = largeBuySetting;
+			this.rapidLargeSellSetting = largeSellSetting;
 
 			InitializeComponent();
 		}
@@ -323,17 +333,23 @@ namespace CoinbaseProToolsForm
 					else if (StringCompareNoCase(cmdSplit[0], "ON"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, true,
-							this.rapidPriceChangeSetting,this.getActiveProduct, this.speechSetting);
+							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
+							this.getActiveProduct, this.speechSetting,
+							this.rapidLargeBuySetting,this.rapidLargeSellSetting);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "OFF"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, false,
-							this.rapidPriceChangeSetting, this.getActiveProduct, this.speechSetting);
+							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
+							this.getActiveProduct, this.speechSetting,
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "SHOW"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, null,
-							this.rapidPriceChangeSetting, this.getActiveProduct, this.speechSetting);
+							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
+							this.getActiveProduct, this.speechSetting,
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "PROD"))
 					{

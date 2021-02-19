@@ -68,6 +68,8 @@ namespace CoinbaseProToolsForm
 	public static class Trigger
 	{
 
+		static readonly string s_PriceRangeParameterString = "trigger addpricerange <start price> <end price> <granularity>";
+
 		public static IList<NewTradesTriggerState> PersistReadNewTradesTriggers(ProductType product)
 		{
 			var triggers = new List<NewTradesTriggerState>();
@@ -894,6 +896,10 @@ namespace CoinbaseProToolsForm
 			{
 				return RemovePriceTriggers(cmdSplit, getProduct, removeNewTradeTrigger, newTradesTriggers);
 			}
+			else if (StringCompareNoCase(cmdSplit[1], "ADDPRICERANGE"))
+			{
+				return AddPriceTriggerRange(cmdSplit, getProduct, addNewTradeTrigger, newTradesTriggers);
+			}
 
 			return new string[] { $"Invalid command {cmdSplit[1]}" };
 		}
@@ -1049,6 +1055,61 @@ namespace CoinbaseProToolsForm
 			}
 
 			return new string[] { $"Trigger for price {price} does not exist." };
+		}
+
+		// trigger addpricerange <start price> <end price> <granularity>
+		private static IEnumerable<string> AddPriceTriggerRange(string[] cmdSplit, Func<ProductType> getProduct,
+			AddNewTradeTrigger addTrigger, Dictionary<ProductType, NewTradesTriggerList> newTradesTriggers)
+		{
+
+			if (cmdSplit.Length != 5) return new string[] { $"Invalid number of parameters: {s_PriceRangeParameterString}" };
+
+			decimal startPrice;
+			if (!decimal.TryParse(cmdSplit[2], out startPrice) || startPrice<=0)
+			{
+				return new string[] { $"Invalid start price {cmdSplit[2]}" };
+			}
+
+			decimal endPrice;
+			if (!decimal.TryParse(cmdSplit[3], out endPrice) || endPrice <=0)
+			{
+				return new string[] { $"Invalid end price {cmdSplit[3]}" };
+			}
+
+			// Swap?
+			if (startPrice > endPrice)
+			{
+				decimal temp = startPrice;
+				startPrice = endPrice;
+				endPrice = temp;
+			}
+
+			decimal granularity;
+			if (!decimal.TryParse(cmdSplit[4], out granularity))
+			{
+				return new string[] { $"Invalid granularity {cmdSplit[4]}" };
+			}
+
+			decimal priceDiff = endPrice - startPrice;
+			if (granularity > priceDiff)
+			{
+				return new string[] { $"Invalid: granularity {granularity} is larger than the difference in price." };
+			}
+
+			var product = getProduct();
+
+			var triggers = newTradesTriggers[product];
+
+			lock (triggers.theLock)
+			{
+
+				for (decimal price = startPrice; price <= endPrice; price += granularity)
+				{
+					addTrigger(product, CreateAlertOnPriceTrigger(price, product));
+				}
+			}
+
+			return null;
 		}
 
 		private static IEnumerable<string> AddPriceTrigger(string[] cmdSplit,Func<ProductType> getProduct,

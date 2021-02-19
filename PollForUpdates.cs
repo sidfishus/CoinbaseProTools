@@ -28,7 +28,6 @@ namespace CoinbaseProToolsForm
 			Func<bool> outputTradeSummary, bool complainNoInternet)
 		{
 
-			//TODO only do this once, not per product type.
 			DateTimeOffset lastTsComplainedNoInternet = DateTime.Now.AddDays(-1);
 
 			while (true)

@@ -26,7 +26,6 @@ namespace CoinbaseProToolsForm
 	{
 		public int latestTradeId=0;
 		public TradeSummaryState inProgressTradeSummary; // A trade summary which is not complete yet
-																		 //sidtodo how is above cleared???
 		public TradeSummaryLevels tradeSummaries=new TradeSummaryLevels();
 		public List<CBProductTrade> tradesFromTheLast5Mins;
 		public readonly object historyLock = new object();
@@ -72,6 +71,7 @@ namespace CoinbaseProToolsForm
 			var prodInfo = Products.productInfo[productType];
 #if DEBUG
 			int numPagesForApprox24Hours = (int)(prodInfo.numPagesForApprox24Hour/4); // An hour or so.
+			//int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
 #else
 			int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
 #endif
@@ -925,6 +925,52 @@ namespace CoinbaseProToolsForm
 			}
 
 			return output;
+		}
+#pragma warning disable 1998
+		public static async Task<IEnumerable<string>> ShowSummary(ProductType product,
+#pragma warning restore 1998
+			Action<Exception> WriteExceptions, CoinbaseProClient cbClient, TradeHistoryState tradeHistory,
+			DateTimeOffset startTime,DateTimeOffset endTime, ProductStats productStats)
+		{
+			TradeSummaryState level1Copy;
+			lock (tradeHistory.historyLock)
+			{
+				TradeSummaryState level1;
+				if (!tradeHistory.tradeSummaries.TryGetValue(1, out level1))
+				{
+					return null;
+				}
+
+				level1Copy = level1.previous;
+			}
+
+			var summary = new TradeSummaryState();
+			summary.timeStart = startTime;
+
+			bool foundTheEnd = false;
+
+			for (var iterSummary = level1Copy; iterSummary != null; iterSummary = iterSummary.previous)
+			{
+
+				if (iterSummary.timeStart < startTime)
+				{
+					foundTheEnd = true;
+					break;
+				}
+
+				DateTimeOffset iterEndTime = TradeSummary.TradeSummaryEndTime(1, iterSummary);
+
+				if (iterEndTime<=endTime)
+				{
+					TradeSummary.IncrementSummary(summary, iterSummary);
+				}
+			}
+
+			if (!foundTheEnd) return new string[] {"Data not loaded."};
+
+			var prodInfo = Products.productInfo[product];
+
+			return new string[] { DescribeTradeSummary(summary, 1, productStats, prodInfo, true) };
 		}
 	}
 }
