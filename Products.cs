@@ -12,6 +12,7 @@ using ExceptionFileWriter = System.Action<string>;
 using ExceptionUIWriter = System.Action<string>;
 using ProductInfoDictionary = System.Collections.Generic.Dictionary<CoinbasePro.Shared.Types.ProductType, CoinbaseProToolsForm.ProductInfo>;
 using static CoinbaseProToolsForm.Library;
+using Types = CoinbasePro.Shared.Types;
 
 namespace CoinbaseProToolsForm
 {
@@ -35,6 +36,11 @@ namespace CoinbaseProToolsForm
 		public Func<decimal, string> fSpeakPrice;
 		public int numPagesForApprox24Hour;
 		public decimal volatilityFactor; // The higher = more volatile. Link is 1.0
+		public Types.Currency sourceCurrency;
+		public Types.Currency destCurrency;
+		public decimal smallestPriceDivision; //sidtodo do this for other cryptos
+		public decimal smallestVolumeDivision; //sidtodo do this for other cryptos
+		public int priceNumDecimalPlaces; //sidtodo do this for other cryptos
 	}
 
 	public static class Products
@@ -127,7 +133,11 @@ namespace CoinbaseProToolsForm
 			chainLink.fSpeakPrice = SpeakPriceGbp(2);
 			chainLink.volatilityFactor = 1;
 			chainLink.numPagesForApprox24Hour =40;
-
+			chainLink.sourceCurrency = Types.Currency.GBP;
+			chainLink.destCurrency= Types.Currency.LINK;
+			chainLink.smallestPriceDivision = 0.00001M;
+			chainLink.smallestVolumeDivision = 0.002M;
+			chainLink.priceNumDecimalPlaces = 5;
 			info.Add(ProductType.LinkGbp, chainLink);
 
 			var nucypher = new ProductInfo { productType = ProductType.NuGbp, name = "NuCypher", spokenName="New cypher", otherNames = new string[]{ "nu", "nugbp", "cypher" } };
@@ -137,6 +147,8 @@ namespace CoinbaseProToolsForm
 			nucypher.fSpeakPrice = SpeakPriceGbp(4);
 			nucypher.numPagesForApprox24Hour = 40;
 			nucypher.volatilityFactor = 1; //sidtodo don't know
+			nucypher.sourceCurrency = Types.Currency.GBP;
+			nucypher.destCurrency = Types.Currency.NU;
 			info.Add(ProductType.NuGbp, nucypher);
 
 			var algo = new ProductInfo { productType = ProductType.AlgoGbp, name = "Algorand", spokenName = "Algorand", otherNames = new string[] { "algo", "alto", "algogbp" } };
@@ -146,6 +158,8 @@ namespace CoinbaseProToolsForm
 			algo.fSpeakPrice = SpeakPriceGbp(4);
 			algo.numPagesForApprox24Hour = 200;
 			algo.volatilityFactor = 3.5M;
+			algo.sourceCurrency = Types.Currency.GBP;
+			algo.destCurrency = Types.Currency.ALGO;
 			info.Add(ProductType.AlgoGbp, algo);
 
 			var bitcoin = new ProductInfo { productType = ProductType.BtcGbp, name = "Bitcoin", spokenName = "Bitcoin", otherNames = new string[] { "btc", "btcgbp" } };
@@ -155,6 +169,8 @@ namespace CoinbaseProToolsForm
 			bitcoin.fSpeakPrice = SpeakPriceGbp(0);
 			bitcoin.numPagesForApprox24Hour = 200;
 			bitcoin.volatilityFactor = 1; //sidtodo don't know
+			bitcoin.sourceCurrency = Types.Currency.GBP;
+			bitcoin.destCurrency = Types.Currency.BTC;
 			info.Add(ProductType.BtcGbp, bitcoin);
 
 			var celo = new ProductInfo { productType = ProductType.CgldGbp, name = "Celo", spokenName = "Celo", otherNames = new string[] { "cgld", "cgldgbp" } };
@@ -164,7 +180,20 @@ namespace CoinbaseProToolsForm
 			celo.fSpeakPrice = SpeakPriceGbp(2);
 			celo.numPagesForApprox24Hour = 40;
 			celo.volatilityFactor = 1; //sidtodo don't know
+			celo.sourceCurrency = Types.Currency.GBP;
+			celo.destCurrency = Types.Currency.CGLD;
 			info.Add(ProductType.CgldGbp, celo);
+
+			var graph = new ProductInfo { productType = ProductType.GrtGbp, name = "Graph", spokenName = "Graph", otherNames = new string[] { "grt", "grtgbp" } };
+			graph.fOutputPrice = (price) => Decimal.Round(price, 5).ToString();
+			graph.fOutputVolume = (volume) => Decimal.Round(volume, 0).ToString().PadLeft(9, ' ');
+			graph.fOutputNumberOfTrades = (numTrades) => numTrades.ToString().PadLeft(5, ' ');
+			graph.fSpeakPrice = SpeakPriceGbp(4);
+			graph.numPagesForApprox24Hour = 40;
+			graph.volatilityFactor = 2;
+			graph.sourceCurrency = Types.Currency.GBP;
+			graph.destCurrency = Types.Currency.GRT;
+			info.Add(ProductType.GrtGbp, graph);
 
 			return info;
 		}

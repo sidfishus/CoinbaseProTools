@@ -32,6 +32,7 @@ using RemoveNewTradeTrigger = System.Action<CoinbasePro.Shared.Types.ProductType
 using GetProductWideSetting = System.Func<CoinbasePro.Shared.Types.ProductType, bool>;
 using ProductWideSetting = System.Tuple<System.Func<CoinbasePro.Shared.Types.ProductType, bool>,
 	System.Action<CoinbasePro.Shared.Types.ProductType, bool>>;
+using System.Threading;
 
 namespace CoinbaseProToolsForm
 {
@@ -46,6 +47,7 @@ namespace CoinbaseProToolsForm
 		ExceptionFileWriter exceptionFileWriter;
 		Func<ProductStatsDictionary> getProductStatsInTheBkg;
 		Action<Exception> HandleExceptions;
+		LockedByRef<InProgressCommand> inProgressCmd;
 
 		Func<ProductType> getActiveProduct;
 		Func<ProductType, bool> setActiveProduct;
@@ -88,7 +90,8 @@ namespace CoinbaseProToolsForm
 			ProductWideSetting rapidPriceChangeDownSetting,
 			ProductWideSetting speechSetting,
 			ProductWideSetting largeBuySetting,
-			ProductWideSetting largeSellSetting)
+			ProductWideSetting largeSellSetting,
+			LockedByRef<InProgressCommand> inProgressCmd)
 		{
 			this.state = state;
 			this.cbClient = cbClient;
@@ -111,8 +114,21 @@ namespace CoinbaseProToolsForm
 			this.speechSetting = speechSetting;
 			this.rapidLargeBuySetting = largeBuySetting;
 			this.rapidLargeSellSetting = largeSellSetting;
+			this.inProgressCmd = inProgressCmd;
 
 			InitializeComponent();
+		}
+
+		private async Task<string[]> CancelInProgressTask()
+		{
+			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			{
+				if (inProgressCmd.Ref == null) return new string[] { "Error: There is no task in progress." };
+				inProgressCmd.Ref.fCancel();
+				inProgressCmd.Ref = null;
+			}
+
+			return null;
 		}
 
 		private static ExceptionUIWriter CreateUIExceptionWriter(EventOutputter eventOutputter)
@@ -314,13 +330,20 @@ namespace CoinbaseProToolsForm
 					{
 						output = await Account.AccountCmd(cbClient, cmdSplit, exceptionFileWriter, exceptionUIWriter);
 					}
+					else if (StringCompareNoCase(cmdSplit[0], "CANCEL") ||
+						StringCompareNoCase(cmdSplit[0], "STOP"))
+					{
+						output = await CancelInProgressTask();
+					}
 					else if (StringCompareNoCase(cmdSplit[0], "OB")) // order book
 					{
 						output = OrderBook.OrderBookCmd(cbClient, cmdSplit,
 							new GetSetOrderBookState(() => state.orderBookState, (upd) => state.orderBookState = upd),
 							eventOutputter, exceptionUIWriter, exceptionFileWriter);
 					}
-					else if (StringCompareNoCase(cmdSplit[0], "TW")) // Trade watch
+					else if (StringCompareNoCase(cmdSplit[0], "TW") ||
+						StringCompareNoCase(cmdSplit[0], "BUYL") ||
+						StringCompareNoCase(cmdSplit[0], "SELLL")) // Trade watch
 					{
 						output = await TradeWatch.CmdLine(cbClient, cmdSplit, eventOutputter,
 							this.getProductStatsInTheBkg,
@@ -328,14 +351,15 @@ namespace CoinbaseProToolsForm
 							this.getTradeHistory(),
 							this.newTradesTriggers,
 							this.getActiveProduct,
-							this.slUpdateTriggers);
+							this.slUpdateTriggers,
+							this.inProgressCmd);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "ON"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, true,
 							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
 							this.getActiveProduct, this.speechSetting,
-							this.rapidLargeBuySetting,this.rapidLargeSellSetting);
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "OFF"))
 					{
@@ -357,7 +381,7 @@ namespace CoinbaseProToolsForm
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "TRIGGER"))
 					{
-						output = Trigger.CmdLine(cmdSplit, this.getActiveProduct,null /* //sidtodo */, addNewTradeTrigger,
+						output = Trigger.CmdLine(cmdSplit, this.getActiveProduct, null /* //sidtodo */, addNewTradeTrigger,
 							removeNewTradeTrigger, newTradesTriggers);
 					}
 					else

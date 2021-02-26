@@ -139,6 +139,7 @@
   <ItemGroup>
     <Compile Include="Account.cs" />
     <Compile Include="BurstQueue.cs" />
+    <Compile Include="LockedByRef.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Currency.cs" />
     <Compile Include="Form1.cs">
@@ -147,6 +148,7 @@
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="InProgressCommand.cs" />
     <Compile Include="Library.cs" />
     <Compile Include="Misc.cs" />
     <Compile Include="Options.cs" />
@@ -158,6 +160,7 @@
     <Compile Include="QueuedHttpClient.cs" />
     <Compile Include="State.cs" />
     <Compile Include="TaskSignaler.cs" />
+    <Compile Include="TimedLock.cs" />
     <Compile Include="TradeHistory.cs" />
     <Compile Include="TradeSummary.cs" />
     <Compile Include="TradeWatch.cs" />

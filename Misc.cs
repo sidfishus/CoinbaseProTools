@@ -25,5 +25,52 @@ namespace CoinbaseProToolsForm
 		{
 			return ts.ToString(((full)?"HH:mm:ss":"HH:mm"));
 		}
+
+		public static string[] GetPriceOrPercentageCmdLine(string[] cmdSplit, int idx,
+			string errorMsgDescribePrice,decimal currentPrice, decimal mustBeWithinPercentageOptional,
+			decimal defaultPricePercentage,
+			out decimal price, out decimal pricePercentage)
+		{
+			price = 0;
+			pricePercentage = 0;
+
+			if (cmdSplit.Length >= (idx+1))
+			{
+				var priceStr = cmdSplit[idx];
+				char lastChar = priceStr[priceStr.Length - 1];
+				if (lastChar == '%')
+				{
+					priceStr = priceStr.Substring(0, priceStr.Length - 1);
+					if (!decimal.TryParse(priceStr, out pricePercentage) ||
+						pricePercentage <= 0 ||
+						(mustBeWithinPercentageOptional!=0 && pricePercentage > mustBeWithinPercentageOptional))
+					{
+						return new string[] { $"Invalid {errorMsgDescribePrice} price percentage: {pricePercentage}." };
+					}
+					pricePercentage /= 100;
+				}
+				else
+				{
+					decimal.TryParse(priceStr, out price);
+					decimal priceDiffPercentage = 0;
+					if (price > 0 && mustBeWithinPercentageOptional!=0)
+					{
+						decimal priceDiff = Math.Abs(price - currentPrice);
+						priceDiffPercentage = (priceDiff / currentPrice)*100;
+					}
+
+					if (price <= 0 || priceDiffPercentage> mustBeWithinPercentageOptional)
+					{
+						return new string[] { $"Invalid {errorMsgDescribePrice} price: {price}." };
+					}
+				}
+			}
+			else
+			{
+				pricePercentage = defaultPricePercentage/100;
+			}
+
+			return null;
+		}
 	}
 }

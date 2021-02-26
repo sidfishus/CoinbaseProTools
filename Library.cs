@@ -35,12 +35,6 @@ namespace CoinbaseProToolsForm
 			return ((enabled) ? "enabled" : "disabled");
 		}
 
-		//public static Tuple<Action<T>,Func<T>> GetStateState<T>(ref T val)
-		//{
-		//	var tup = new Tuple<Action<T>, Func<T>>((newVal) => val=newVal, ()=>val);
-		//	return tup;
-		//}
-
 		public static Action<string> SynchronisedFileAppender(string filePath,
 			Func<string, string> textFormatter = null,
 			Func<string, bool> ignore = null)

@@ -19,6 +19,8 @@ using ExceptionFileWriter = System.Action<string>;
 using ExceptionUIWriter = System.Action<string>;
 using OrderBookRange = System.Tuple<string, System.DateTime>;
 using ProductType = CoinbasePro.Shared.Types.ProductType;
+using FAmountInTopList = System.Func<decimal /* Top bid */, decimal /* Top ask */, decimal /* Num coins */>;
+using WatchOrderBookCallback = System.Action<CoinbaseProToolsForm.OrderBookLevel2>;
 
 namespace CoinbaseProToolsForm
 {
@@ -28,6 +30,13 @@ namespace CoinbaseProToolsForm
 		obtLevel2=1,
 	};
 
+	public struct WatchOrderBookRes
+	{
+		public Action Stop;
+		public Func<OrderBookLevel2> GetOrderBook;
+	}
+
+	//sidtodo remove
 	public class OrderBookState
 	{
 		public OrderBookLevel2 level2;
@@ -36,20 +45,24 @@ namespace CoinbaseProToolsForm
 
 	public class OrderBookLevel2
 	{
+		public bool initialised;
 		public PriceList asks;
 		public PriceList bids;
 		public PriceList topAsks;
 		public PriceList topBids;
-		public List<OrderBookRange> topBidsAsks = null;
+		//public List<OrderBookRange> topBidsAsks = null;
+		public readonly object orderBookLock = new object();
 
 		public OrderBookLevel2 DeepCopy()
 		{
+			if (!initialised) return null;
+
 			var copy = new OrderBookLevel2();
 			copy.asks = new PriceList(this.asks);
 			copy.bids = new PriceList(this.bids);
 			copy.topAsks= new PriceList(this.topAsks);
 			copy.topBids = new PriceList(this.topBids);
-			copy.topBidsAsks = new List<OrderBookRange>(this.topBidsAsks);
+			//copy.topBidsAsks = new List<OrderBookRange>(this.topBidsAsks);
 			return copy;
 		}
 	}
@@ -96,37 +109,37 @@ namespace CoinbaseProToolsForm
 			{
 				return PrintOrderBook(cbClient, getSetState);
 			}
-			else if (StringCompareNoCase(param[1], "PRINTHISTORY"))
-			{
-				return PrintOrderBookHistory(cbClient, getSetState);
-			}
+			//else if (StringCompareNoCase(param[1], "PRINTHISTORY"))
+			//{
+			//	return PrintOrderBookHistory(cbClient, getSetState);
+			//}
 
 			return new string[] { $"{param[1]} unknown." };
 		}
 
-		private static IEnumerable<string> PrintOrderBookHistory(CoinbaseProClient cbClient, GetSetOrderBookState getSetState)
-		{
-			var curState = getSetState.Item1();
+		//private static IEnumerable<string> PrintOrderBookHistory(CoinbaseProClient cbClient, GetSetOrderBookState getSetState)
+		//{
+		//	var curState = getSetState.Item1();
 
-			//TODO this assumes level 2.
-			OrderBookLevel2 orderBookCopy;
+		//	//TODO this assumes level 2.
+		//	OrderBookLevel2 orderBookCopy;
 
-			lock (curState.OrderBookLock)
-			{
-				orderBookCopy = curState.level2.DeepCopy();
-			}
+		//	lock (curState.OrderBookLock)
+		//	{
+		//		orderBookCopy = curState.level2.DeepCopy();
+		//	}
 
-			var outputList = new List<string>();
-			for (int i = 0; i < orderBookCopy.topBidsAsks.Count; ++i)
-			{
-				var kvp = orderBookCopy.topBidsAsks[i];
-				//outputList.Add(new EventOutput(kvp.Item1, kvp.Item2));
-				//outputList.Add(new EventOutput(kvp.Item1, kvp.Item2));
-				outputList.Add($"{kvp.Item2.ToString("HH:mm:ss")} {kvp.Item1}");
-			}
+		//	var outputList = new List<string>();
+		//	for (int i = 0; i < orderBookCopy.topBidsAsks.Count; ++i)
+		//	{
+		//		var kvp = orderBookCopy.topBidsAsks[i];
+		//		//outputList.Add(new EventOutput(kvp.Item1, kvp.Item2));
+		//		//outputList.Add(new EventOutput(kvp.Item1, kvp.Item2));
+		//		outputList.Add($"{kvp.Item2.ToString("HH:mm:ss")} {kvp.Item1}");
+		//	}
 
-			return outputList;
-		}
+		//	return outputList;
+		//}
 
 		private static IEnumerable<string> PrintOrderBook(CoinbaseProClient cbClient, GetSetOrderBookState getSetState)
 		{
@@ -194,11 +207,11 @@ namespace CoinbaseProToolsForm
 			curState.level2.bids = new PriceList();
 			curState.level2.topAsks = new PriceList();
 			curState.level2.topBids = new PriceList();
-			if (curState.level2.topBidsAsks != null)
-			{
-				curState.level2.topBidsAsks.Clear();
-			}
-			curState.level2.topBidsAsks = new List<OrderBookRange>();
+			//if (curState.level2.topBidsAsks != null)
+			//{
+			//	curState.level2.topBidsAsks.Clear();
+			//}
+			//curState.level2.topBidsAsks = new List<OrderBookRange>();
 
 			var webSocket = cbClient.WebSocket;
 			//sidtodo other websocket events.
@@ -206,48 +219,33 @@ namespace CoinbaseProToolsForm
 			//var channels = new List<ChannelType>() { ChannelType.Ticker }; // When not providing any channels, the socket will subscribe to all channels
 			//sidtodo hardcoded to link
 			webSocket.Start(new ProductType [] { ProductType.LinkGbp }.ToList());
-			webSocket.OnLevel2UpdateReceived += (sender, args) =>
-				WebSocket_OnLevel2UpdateReceived(args, getSetState.Item1, EventOutput, exceptionUIWriter,
-					exceptionFileWriter, getSetState, cbClient);
-			webSocket.OnSnapShotReceived += (sender, args) =>
-				WebSocket_OnSnapShotReceived(args, getSetState.Item1, EventOutput,
-					exceptionUIWriter, exceptionFileWriter, getSetState, cbClient);
+			//webSocket.OnLevel2UpdateReceived += (sender, args) =>
+			//	WebSocket_OnLevel2UpdateReceived(args, getSetState.Item1, EventOutput, exceptionUIWriter,
+			//		exceptionFileWriter, getSetState, cbClient);
+			//webSocket.OnSnapShotReceived += (sender, args) =>
+				//WebSocket_OnSnapShotReceived(args, getSetState.Item1, EventOutput,
+				//	exceptionUIWriter, exceptionFileWriter, getSetState, cbClient);
 
-			webSocket.OnWebSocketError += (sender, args) => WebSocket_OnWebSocketError(sender,args, exceptionFileWriter, exceptionUIWriter);
+			//webSocket.OnWebSocketError += (sender, args) => WebSocket_OnWebSocketError(sender,args, exceptionFileWriter, exceptionUIWriter);
 
 			return null;
 		}
 
-		private static void WebSocket_OnWebSocketError(object sender, WebfeedEventArgs<SuperSocket.ClientEngine.ErrorEventArgs> e,
-			ExceptionUIWriter exceptionUIWriter, ExceptionFileWriter exceptionFileWriter)
-		{
-			var exceptionText = e.LastOrder.Exception.ToString();
-			exceptionFileWriter(exceptionText);
-			exceptionUIWriter(exceptionText);
-		}
-
-		private static void WebSocket_OnSnapShotReceived(WebfeedEventArgs<Snapshot> args, Func<OrderBookState> getState,
-			EventOutputter EventOutput, ExceptionUIWriter exceptionUIWriter, ExceptionFileWriter exceptionFileWriter,
-			GetSetOrderBookState getSetState, CoinbaseProClient cbClient)
+		private static void WebSocket_OnSnapShotReceived(WebfeedEventArgs<Snapshot> args, OrderBookLevel2 state,
+			Action restartOrderBook)
 		{
 
 			try
 			{
-				var curState = getState();
-				if (curState == null)
-				{
-					// Potentially receiving an update after the web socket stopped?
-					return;
-				}
 
-				lock (curState.OrderBookLock)
+				lock (state.orderBookLock)
 				{
 					foreach (var ask in args.LastOrder.Asks)
 					{
 						if (ask.Length == 2)
 						{
 							// <Price> <num> pairs
-							curState.level2.asks.Add(ask[0], ask[1]);
+							state.asks.Add(ask[0], ask[1]);
 
 							//EventOutput($"{ask[0]} {ask[1]} sell"); //sidtodo remove
 						}
@@ -258,31 +256,23 @@ namespace CoinbaseProToolsForm
 						if (bid.Length == 2)
 						{
 							// <Price> <num> pairs
-							curState.level2.bids.Add(bid[0], bid[1]);
+							state.bids.Add(bid[0], bid[1]);
 							//EventOutput($"{bid[0]} {bid[1]} sell"); //sidtodo remove
 						}
 					}
 				}
 			}
+#pragma warning disable 168
 			catch(Exception e)
+#pragma warning restore 168
 			{
-				var text = e.ToString();
-				exceptionFileWriter(text);
-				exceptionUIWriter(text);
-
-				var state = getState();
-				if (state != null)
-				{
-					lock (state.OrderBookLock)
-					{
-						StopOrderBook(cbClient, getSetState);
-						InitLevel2(getSetState, cbClient, EventOutput, exceptionUIWriter, exceptionFileWriter);
-					}
-				}
+				restartOrderBook();
 			}
 		}
 
-		private static void InitialiseTopOrderBookEntries(PriceList topPrices, IEnumerable<KeyValuePair<decimal,decimal>> fullPrices)
+		private static void InitialiseTopOrderBookEntries(PriceList topPrices,
+			IEnumerable<KeyValuePair<decimal,decimal>> fullPrices,
+			decimal numCoinsInTop)
 		{
 			decimal accumulatedCoins = 0;
 			foreach (var priceTuple in fullPrices)
@@ -291,36 +281,107 @@ namespace CoinbaseProToolsForm
 				topPrices.Add(priceTuple.Key,priceTuple.Value);
 				accumulatedCoins += priceTuple.Value;
 
-				if (accumulatedCoins >= 1000)
+				if (accumulatedCoins >= numCoinsInTop)
 				{
 					break;
 				}
 			}
 		}
 
-		private static void WebSocket_OnLevel2UpdateReceived(WebfeedEventArgs<Level2> args, Func<OrderBookState> getState,
-			EventOutputter EventOutput, ExceptionUIWriter exceptionUIWriter, ExceptionFileWriter exceptionFileWriter,
-			GetSetOrderBookState getSetState, CoinbaseProClient cbClient)
+		public static WatchOrderBookRes WatchOrderBook(CoinbaseProClient cbClient, ProductType product,
+			Action<Exception> handleExceptions,
+			FAmountInTopList fAmountInTopList, WatchOrderBookCallback watchOrderBookCallbackOptional)
 		{
+			var state = new OrderBookLevel2();
+			return WatchOrderBook(cbClient, product, handleExceptions, fAmountInTopList, watchOrderBookCallbackOptional, state);
+		}
+
+		//sidtodo what if the websocket already running? i.e. another process?
+		private static WatchOrderBookRes WatchOrderBook(CoinbaseProClient cbClient, ProductType product,
+			Action<Exception> handleExceptions,
+			FAmountInTopList fAmountInTopList, WatchOrderBookCallback watchOrderBookCallbackOptional,
+			OrderBookLevel2 state)
+		{
+			var webSocket = cbClient.WebSocket;
+
+			object restartLock = new object();
+
+			Action restartOrderBook = () =>
+			{
+				lock (restartLock)
+				{
+					if (cbClient.WebSocket.State != WebSocket4Net.WebSocketState.Connecting)
+					{
+						WatchOrderBook(cbClient, product, handleExceptions, fAmountInTopList, watchOrderBookCallbackOptional, state);
+					}
+				}
+			};
+
+			WatchOrderBookRes res = new WatchOrderBookRes();
+			res.Stop = () => webSocket.Stop();
+			res.GetOrderBook = () =>
+			{
+				OrderBookLevel2 rv;
+				lock (state.orderBookLock)
+				{
+					rv = state.DeepCopy();
+				}
+				return rv;
+			};
+
+			state.initialised = false;
+			state.asks = new PriceList();
+			state.bids = new PriceList();
+			state.topAsks = new PriceList();
+			state.topBids = new PriceList();
+			//state.topBidsAsks = new List<OrderBookRange>();
+
+			Func<decimal> fNumCoinsToHoldInTopList = () =>
+			{
+				return fAmountInTopList(state.bids.ElementAt(state.bids.Count - 1).Key,
+					state.asks.ElementAt(0).Key);
+			};
+
+			webSocket.Stop();
+
+			var channels = new List<ChannelType>() { ChannelType.Level2 };
+			webSocket.Start(new ProductType[] { product }.ToList());
+			webSocket.OnSnapShotReceived += (sender, args) => WebSocket_OnSnapShotReceived(args, state, restartOrderBook);
+			webSocket.OnWebSocketError += (sender,e) => WebSocket_OnWebSocketError(e, handleExceptions);
+			webSocket.OnLevel2UpdateReceived += (sender, args) =>
+				WebSocket_OnLevel2UpdateReceived(args, state, restartOrderBook, fNumCoinsToHoldInTopList,
+				watchOrderBookCallbackOptional);
+
+			return res;
+		}
+
+		private static void WebSocket_OnWebSocketError(WebfeedEventArgs<SuperSocket.ClientEngine.ErrorEventArgs> e,
+			Action<Exception> handleExceptions)
+		{
+			handleExceptions(e.LastOrder.Exception);
+		}
+
+		private static void WebSocket_OnLevel2UpdateReceived(WebfeedEventArgs<Level2> args, OrderBookLevel2 state,
+			Action restartOrderBook, Func<decimal> fNumCoinsToHoldInTopList,
+			WatchOrderBookCallback watchOrderBookCallbackOptional)
+		{
+
+			OrderBookLevel2 stateCopyForCallback=null;
+
 			try
 			{
-				var curState = getState();
-				if (curState == null)
-				{
-					// Potentially receiving an update after the web socket stopped?
-					return;
-				}
 
-				lock (curState.OrderBookLock)
+				lock (state.orderBookLock)
 				{
+					state.initialised = true;
 
 					// Initialise the top 5 bids and asks.
-					//if (curState.level2.asks.Count != 0 || curState.level2.asks.Count!=0)
+					//if (state.asks.Count != 0 || state.asks.Count!=0)
 					//{
 					//	// Iterate the asks (sells) descending (lowest price first)
 					//	var outputList = new List<EventOutput>();
-					//	InitialiseTopOrderBookEntries(curState.level2.topAsks, curState.level2.asks);
-					//	InitialiseTopOrderBookEntries(curState.level2.topBids, curState.level2.bids.Reverse());
+					//	InitialiseTopOrderBookEntries(state.topAsks, state.asks);
+					//	InitialiseTopOrderBookEntries(state.topBids, state.bids.Reverse());
 					//}
 
 					// Update the incore order book
@@ -337,24 +398,24 @@ namespace CoinbaseProToolsForm
 
 							if (StringCompareNoCase(change[0], "sell"))
 							{
-								priceList = curState.level2.asks;
-								topPriceList = curState.level2.topAsks;
+								priceList = state.asks;
+								topPriceList = state.topAsks;
 								priceInReverse = false;
 
-								if (curState.level2.topBids.Count == 0)
+								if (state.topBids.Count == 0)
 								{
-									InitialiseTopOrderBookEntries(curState.level2.topBids, curState.level2.bids);
+									InitialiseTopOrderBookEntries(state.topBids, state.bids, fNumCoinsToHoldInTopList());
 								}
 							}
 							else if (StringCompareNoCase(change[0], "buy"))
 							{
-								priceList = curState.level2.bids;
-								topPriceList = curState.level2.topBids;
+								priceList = state.bids;
+								topPriceList = state.topBids;
 								priceInReverse = true;
 
-								if (curState.level2.topAsks.Count == 0)
+								if (state.topAsks.Count == 0)
 								{
-									InitialiseTopOrderBookEntries(curState.level2.topAsks, curState.level2.asks);
+									InitialiseTopOrderBookEntries(state.topAsks, state.asks, fNumCoinsToHoldInTopList());
 								}
 							}
 							else return;
@@ -365,13 +426,24 @@ namespace CoinbaseProToolsForm
 								return;
 							}
 
+							//sidtodo test this with other currencies
 							bool isDelete = (change[2] == "0.00");
 							if (isDelete)
 							{
+#if DEBUG
+								//sidtodo remove
+								if (price == 21.05M)
+								{
+									int test = 123;
+								}
+#endif
 								if (!priceList.Remove(price))
 								{
-									EventOutput(new EventOutput[] { new EventOutput(
-										$"****** Price {price} not exist in dictionary. told to remove. {change[0]}. {args.LastOrder.Changes.Count()}", null)});
+									//sidtodo
+									//EventOutput(new EventOutput[] { new EventOutput(
+									//		$"****** Price {price} not exist in dictionary. told to remove. {change[0]}. {args.LastOrder.Changes.Count()}", null)});
+									restartOrderBook();
+									return;
 								}
 							}
 							else
@@ -380,7 +452,8 @@ namespace CoinbaseProToolsForm
 								decimal number;
 								if (!decimal.TryParse(change[2], out number))
 								{
-									EventOutput(new EventOutput[] { new EventOutput($"Couldn't parse number: ${change[2]}", null) }); //sidtodo remove
+									//sidtodo
+									//EventOutput(new EventOutput[] { new EventOutput($"Couldn't parse number: ${change[2]}", null) }); //sidtodo remove
 									return;
 								}
 
@@ -389,24 +462,27 @@ namespace CoinbaseProToolsForm
 
 							// Delete the top price list and repopulate it
 							topPriceList.Clear();
-							InitialiseTopOrderBookEntries(topPriceList, ((priceInReverse) ? priceList.Reverse() : priceList));
+							InitialiseTopOrderBookEntries(topPriceList, ((priceInReverse) ? priceList.Reverse() : priceList),
+								fNumCoinsToHoldInTopList());
 
 							//EventOutput($"{change[0]} {change[1]} {change[2]} {args.LastOrder.Time}");
 						}
 					}
 
-					// Output the top bids and asks
-					if (curState.level2.topBids.Count > 0 && curState.level2.topAsks.Count > 0)
-					{
-						string curTopBidAsksStr = $"{curState.level2.topBids.First().Key}-" +
-							$"{curState.level2.topBids.Last().Key} {curState.level2.topAsks.First().Key}-{curState.level2.topAsks.Last().Key}";
+					if(watchOrderBookCallbackOptional!=null) stateCopyForCallback = state.DeepCopy();
 
-						if (curState.level2.topBidsAsks.Count ==0 ||
-							!Library.StringCompareNoCase(curState.level2.topBidsAsks[curState.level2.topBidsAsks.Count-1].Item1,curTopBidAsksStr))
-						{
-							curState.level2.topBidsAsks.Add(new OrderBookRange(curTopBidAsksStr, DateTime.Now));
-						}
-					}
+					// Output the top bids and asks
+					//if (state.topBids.Count > 0 && state.topAsks.Count > 0)
+					//{
+					//	string curTopBidAsksStr = $"{state.topBids.First().Key}-" +
+					//		$"{state.topBids.Last().Key} {state.topAsks.First().Key}-{state.topAsks.Last().Key}";
+
+					//	if (state.topBidsAsks.Count == 0 ||
+					//		!Library.StringCompareNoCase(state.topBidsAsks[state.topBidsAsks.Count - 1].Item1, curTopBidAsksStr))
+					//	{
+					//		state.topBidsAsks.Add(new OrderBookRange(curTopBidAsksStr, DateTime.Now));
+					//	}
+					//}
 
 					//for (int i = 0; i < args.LastOrder.Changes.Count(); ++i)
 					//{
@@ -485,21 +561,17 @@ namespace CoinbaseProToolsForm
 
 				//EventOutput(output);
 			}
+#pragma warning disable 168
 			catch (Exception e)
+#pragma warning restore 168
 			{
-				var text = e.ToString();
-				exceptionFileWriter(text);
-				exceptionUIWriter(text);
+				restartOrderBook();
+				return;
+			}
 
-				var state = getState();
-				if (state != null)
-				{
-					lock (state.OrderBookLock)
-					{
-						StopOrderBook(cbClient, getSetState);
-						InitLevel2(getSetState, cbClient, EventOutput, exceptionUIWriter, exceptionFileWriter);
-					}
-				}
+			if (stateCopyForCallback != null)
+			{
+				watchOrderBookCallbackOptional(stateCopyForCallback);
 			}
 		}
 	}

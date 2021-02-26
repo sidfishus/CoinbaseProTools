@@ -73,7 +73,7 @@ namespace CoinbaseProToolsForm
 			int numPagesForApprox24Hours = (int)(prodInfo.numPagesForApprox24Hour/4); // An hour or so.
 			//int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
 #else
-			int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
+			int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour*8; // Approx one day
 #endif
 			//const int numPagesForApprox24Hours = 120; //Approx 3 days
 			//const int numPagesForApprox24Hours = 240; //Approx 6 days

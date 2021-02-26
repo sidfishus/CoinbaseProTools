@@ -454,8 +454,7 @@ namespace CoinbaseProToolsForm
 				{
 					return null;
 				}
-
-				// 10 minutes in units.
+				
 				int numLevel1Units = (int)(durationSecs / TradeSummary.singleUnitOfTimeSecs);
 
 				var tenMinSummary = TradeSummary.GetTradeSummary(numLevel1Units, summaryLevels);
@@ -689,6 +688,8 @@ namespace CoinbaseProToolsForm
 					}
 
 					var text = getAlertMessage(largestVolumeMs, largestAccumulatedVolumePercentageOf24Hour);
+					//sidtodo remove
+					text += $"{matchingOuterTrade.TradeId} {matchingInnerTrade.TradeId}";
 
 					if (fIsSpeechEnabled())
 					{
@@ -1196,6 +1197,7 @@ namespace CoinbaseProToolsForm
 						previousPrice = trade.Price;
 
 						const int fiveMinsInSeconds = (60 * 5);
+						goingUp = !goingUp;
 						trigger = ((trade.Time - lastSpeakTime).TotalSeconds >= fiveMinsInSeconds);
 						if (trigger)
 						{
