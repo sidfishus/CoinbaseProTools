@@ -8,6 +8,6 @@ namespace CoinbaseProToolsForm
 {
 	public class InProgressCommand
 	{
-		public Action fCancel;
+		public Func<Task<string[]>> fCancel;
 	}
 }

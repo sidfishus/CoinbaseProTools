@@ -25,13 +25,20 @@ namespace CoinbaseProToolsForm
 			EventOutputter Output, Func<ProductStatsDictionary> getProductStats,
 			SummaryLevelUpdateCallback summaryLevelUpdateCallback,
 			NewTradesCallback newTradesCallback, ProductType productType,
-			Func<bool> outputTradeSummary, bool complainNoInternet)
+			Func<bool> outputTradeSummary, bool complainNoInternet,
+			Func<bool> fEnabled)
 		{
 
 			DateTimeOffset lastTsComplainedNoInternet = DateTime.Now.AddDays(-1);
 
 			while (true)
 			{
+
+				if (!fEnabled())
+				{
+					await Task.Delay(5000);
+					continue;
+				}
 
 				for (int amountOfPagesToLoad = 1; ;)
 				{

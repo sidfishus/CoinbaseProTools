@@ -25,6 +25,8 @@ using PriceList = System.Collections.Generic.SortedDictionary<decimal, decimal>;
 using Debug = System.Diagnostics.Debug;
 using static CoinbaseProToolsForm.Misc;
 using System.Threading;
+using Accounts = CoinbasePro.Services.Accounts;
+using GetOrderRes = System.Tuple<CoinbasePro.Services.Orders.Models.Responses.OrderResponse, bool>;
 
 namespace CoinbaseProToolsForm
 {
@@ -47,18 +49,39 @@ namespace CoinbaseProToolsForm
 			Action<Exception> HandleExceptions, TradeHistoryState tradeHistoryState,
 			Dictionary<ProductType,NewTradesTriggerList> newTradesTriggers,
 			Func<ProductType> getActiveProduct, Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers,
-			LockedByRef<InProgressCommand> inProgressCmd)
+			LockedByRef<InProgressCommand> inProgressCmd, WebSocketState webSocketState,
+			Action<bool> fEnableNetworkTraffic)
 		{
 
 			if (StringCompareNoCase(cmdSplit[0], "BUYL"))
 			{
 				return await BuyLimit(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
-					cbClient, EventOutput, inProgressCmd);
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
 			}
 			else if (StringCompareNoCase(cmdSplit[0], "SELLL"))
 			{
 				return await SellLimit(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
-					cbClient, EventOutput, inProgressCmd);
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
+			}
+			else if (StringCompareNoCase(cmdSplit[0], "BUYM"))
+			{
+				return await BuyMarket(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
+			}
+			else if (StringCompareNoCase(cmdSplit[0], "SELLM"))
+			{
+				return await SellMarket(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
+			}
+			else if (StringCompareNoCase(cmdSplit[0], "BUYMATPRICE"))
+			{
+				return await BuyMarketAtPrice(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
+			}
+			else if (StringCompareNoCase(cmdSplit[0], "SELLMATPRICE"))
+			{
+				return await SellMarketAtPrice(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
 			}
 
 			else if (StringCompareNoCase(cmdSplit[1], "TEST1"))
@@ -221,15 +244,18 @@ namespace CoinbaseProToolsForm
 			Func<OrderBookLevel2, decimal, decimal> fGetOurPrice = (ob, currentPrice) =>
 			{
 
-				currentPrice = fPriceAlteration(currentPrice,1); //sidtodo remove
+				// For testing
+				//currentPrice = fPriceAlteration(currentPrice,1); //sidtodo remove
 
 				var bestPrice = fBestPrice(ob);
 				if (minOrMaxPrice == 0) minOrMaxPrice = fMinOrMaxPrice(bestPrice);
 
+				bool weAreCurrentlyTheBestPrice = (currentPrice == bestPrice);
+
 				decimal thePrice;
 				if (numUnderCutUnits == 1)
 				{
-					thePrice = fPriceAlteration(bestPrice,prodInfo.smallestPriceDivision);
+					thePrice = fPriceAlteration(bestPrice, prodInfo.smallestPriceDivision);
 				}
 				else
 				{
@@ -246,15 +272,21 @@ namespace CoinbaseProToolsForm
 						powValue = numUnderCutUnits - 1;
 					}
 
-					thePrice = Decimal.Round(fPriceAlteration(bestPrice,(((decimal)Math.Pow(10, powValue) * underCutUnit) / divideBy)),
+					thePrice = Decimal.Round(fPriceAlteration(bestPrice, (((decimal)Math.Pow(10, powValue) * underCutUnit) / divideBy)),
 						prodInfo.priceNumDecimalPlaces);
-					if (thePrice == bestPrice || !fIsABetterPrice(thePrice,bestPrice))
+					if (thePrice == bestPrice || !fIsABetterPrice(thePrice, bestPrice))
 					{
 						thePrice = fPriceAlteration(bestPrice, prodInfo.smallestPriceDivision);
 					}
 				}
 
-				if(!fIsABetterPrice(thePrice, currentPrice) && fIsABetterPrice(currentPrice, bestPrice))
+				// Don't under/overcut ourselves
+				if (weAreCurrentlyTheBestPrice && fIsABetterPrice(thePrice, currentPrice))
+				{
+					thePrice = currentPrice;
+				}
+
+				if (weAreCurrentlyTheBestPrice && fIsABetterPrice(currentPrice, bestPrice))
 				{
 					var now = DateTime.Now;
 					if ((now - fullChangeTs).TotalMilliseconds < 3000)
@@ -274,16 +306,17 @@ namespace CoinbaseProToolsForm
 				}
 				Debug.Assert(!fIsABetterPrice(thePrice, minOrMaxPrice));
 
-				//sidtodo remove this whole block
-				if (orderSide == OrderSide.Sell)
-				{
-					thePrice += 1;
-				}
-				else
-				{
-					thePrice -= 1;
-				}
-				Debug.Assert(!fIsABetterPrice(thePrice,bestPrice)); //sidtodo remove
+				// For testing..
+				//sidtodo remove the entire block
+				//if (orderSide == OrderSide.Sell)
+				//{
+				//	thePrice += 1;
+				//}
+				//else
+				//{
+				//	thePrice -= 1;
+				//}
+				//Debug.Assert(!fIsABetterPrice(thePrice, bestPrice));
 
 				return thePrice;
 			};
@@ -291,153 +324,474 @@ namespace CoinbaseProToolsForm
 			return fGetOurPrice;
 		}
 
-		// SELLL [coins] [under/over cut units: 1-10000] [min price/%]
-		private static async Task<IEnumerable<string>> SellLimit(string[] cmdSplit,
-			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
-			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
-			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd)
+		private static async Task<IEnumerable<string>> BuySellLimit(string[] cmdSplit,
+			Action<Exception> HandleExceptions,
+			ProductType product, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic,
+			Accounts.Models.Account account, string minMaxPriceErrorString,
+			ProductInfo prodInfo, OrderSide orderSide, Func<OrderBookLevel2, decimal> fBestPrice,
+			Func<decimal,decimal,string> fSuccessMsg,Func<decimal,decimal,decimal> fAmountToTrade)
 		{
 
 			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			using (await webSocketState.theLock.LockAsync(Timeout.InfiniteTimeSpan))
 			{
-
+				//// Check no tasks already in progress
 				if (inProgressCmd.Ref != null)
 				{
 					//sidtodo generic in progress message
 					return new string[] { "Error: A task is already in progress." };
 				}
 
-				//sidtodo check task not already in progress.
+				if (cbClient.WebSocket.State != WebSocket4Net.WebSocketState.Closed &&
+					cbClient.WebSocket.State != WebSocket4Net.WebSocketState.None)
+				{
+					return new string[] { "Error: Websocket is already in use." };
+				}
 
-				var prod = getActiveProduct();
-				var prodInfo = Products.productInfo[prod];
-
-				var destCurrencyId = Currency.CurrencyId(prodInfo.destCurrency);
-
-				var destAccount = await cbClient.AccountsService.GetAccountByIdAsync(destCurrencyId);
-
+				//// Amount to spend
 				decimal amountToSpend;
-				if (cmdSplit.Length >= 2 && !StringCompareNoCase(cmdSplit[1], "all"))
-				{
+				IEnumerable<string> rv = Account.GetAmountToSpendCmdLine(account, cmdSplit, 1, out amountToSpend);
+				if (rv != null) return rv;
 
-					if (StringCompareNoCase(cmdSplit[1], "half"))
-					{
-						amountToSpend = destAccount.Available / 2;
-					}
-					else if (StringCompareNoCase(cmdSplit[1], "third"))
-					{
-						amountToSpend = destAccount.Available / 3;
-					}
-					else if (StringCompareNoCase(cmdSplit[1], "quater"))
-					{
-						amountToSpend = destAccount.Available / 4;
-					}
-					else
-					{
-						if (!Decimal.TryParse(cmdSplit[1], out amountToSpend) || amountToSpend <= 0)
-						{
-							return new string[] { $"Invalid amount: {cmdSplit[1]}." };
-						}
-
-						if ((destAccount.Available - amountToSpend) < 1) amountToSpend = destAccount.Available;
-
-						if (amountToSpend > destAccount.Available)
-						{
-							return new string[] { $"{amountToSpend} is more than is available "+
-								$"({destAccount.Available})." };
-						}
-					}
-				}
-				else
-				{
-					amountToSpend = destAccount.Available;
-				}
-
-				amountToSpend = 1; //sidtodo remove
-
-				int numUnderCutUnits = 1;
+				int numUnderOvercutUnits = 1;
 				if (cmdSplit.Length >= 3)
 				{
-					if (!int.TryParse(cmdSplit[2], out numUnderCutUnits) || numUnderCutUnits <= 0 || numUnderCutUnits > 100)
+					if (!int.TryParse(cmdSplit[2], out numUnderOvercutUnits) || numUnderOvercutUnits <= 0 ||
+						numUnderOvercutUnits > 100)
 					{
-						return new string[] { $"Invalid undercut amount: {cmdSplit[2]}." };
+						return new string[] { $"Invalid undercut/overcut amount: {cmdSplit[2]}." };
 					}
 				}
 
-				// Min price. i.e. don't go below this level
-				decimal minPricePercentage = 0;
-				decimal minPrice = 0;
-				var lastTrade = (await cbClient.ProductsService.GetTradesAsync(prod, 1, 1))[0][0];
+				//// Min/max price. i.e. don't go above or below this level depending on whether it's buy or sell
+				decimal minMaxPricePercentage = 0;
+				decimal minMaxPrice = 0;
+				var lastTrade = (await cbClient.ProductsService.GetTradesAsync(product, 1, 1))[0][0];
 
 				string[] minMaxPriceErrors =
-					GetPriceOrPercentageCmdLine(cmdSplit, 3, "minimum", lastTrade.Price, 5, 1, out minPrice, out minPricePercentage);
+					GetPriceOrPercentageCmdLine(cmdSplit, 3, minMaxPriceErrorString, lastTrade.Price, 5, 1, out minMaxPrice, out minMaxPricePercentage);
 				if (minMaxPriceErrors != null) return minMaxPriceErrors;
 
-				//sidtodo what if the order book is already running?
-				//sidtodo parameterise how many decimal places
-				FAmountInTopList fAmountInTopList = (topBid, topAsk) => Decimal.Round(amountToSpend, 0) + prodInfo.smallestVolumeDivision;
+				//// Start the order book
+				WatchOrderBookRes wobRes = OrderBook.WatchOrderBook(cbClient, product, HandleExceptions, null,
+					null, webSocketState);
 
-				WatchOrderBookRes wobRes = OrderBook.WatchOrderBook(cbClient, prod, HandleExceptions, fAmountInTopList,
-					null);
-
-				Func<decimal> fAmountToSpend = () => amountToSpend;
-				Func<OrderBookLevel2, decimal> fBestPrice = (ob) => ob.asks.ElementAt(0).Key;
+				//// Buy/sell task
 
 				Func<OrderBookLevel2, decimal, decimal> fGetOurPrice =
-					LimitTaskGetOurPrice(numUnderCutUnits, prodInfo, fBestPrice, OrderSide.Sell, minPrice, minPricePercentage);
+					LimitTaskGetOurPrice(numUnderOvercutUnits, prodInfo, fBestPrice, orderSide, minMaxPrice,
+					minMaxPricePercentage);
 
 				var sync = new LimitTaskSynchronisation();
 
-				Action fOutputSuccess = () =>
-				{
-					var msg = $"Sold {sync.currentAmountToTrade} {prodInfo.spokenName} at " +
-						$"{prodInfo.fSpeakPrice(sync.currentPrice)}";
-					EventOutput(new EventOutput[] { new EventOutput(msg, null) });
-				};
+				Func<string> fSuccessMsgLocal = ()=>fSuccessMsg(sync.currentAmountToTrade, sync.currentPrice);
 
-				//sidtodo what if hte order book crashes and we already have a task outstanding?!?!?
-				//sidtodo restart - don't restart the task??!
+				Action fOnSuccess = async () =>
+				{
+					await wobRes.Stop();
+					fEnableNetworkTraffic(true);
+					// Clear the inprogress task
+					await inProgressCmd.Clear();
+					EventOutput(new EventOutput[] { new EventOutput(fSuccessMsgLocal(), null) });
+				};
 
 				var limitTaskCancelTS = new CancellationTokenSource();
 
+				Func<decimal, decimal> fAmountToTradeLocal = (price) => fAmountToTrade(amountToSpend, price);
+
 #pragma warning disable 4014
-				var limitTask = Task.Run(async () => await LimitTask(fAmountToSpend, wobRes, EventOutput, prodInfo, cbClient,
-					  fGetOurPrice, OrderSide.Sell, fOutputSuccess, fBestPrice, sync, limitTaskCancelTS.Token),
+				var limitTask = Task.Run(async () => await LimitTask(fAmountToTradeLocal, wobRes.GetOrderBook,
+						EventOutput, prodInfo, cbClient,
+						fGetOurPrice, orderSide, fOnSuccess, fBestPrice, sync, limitTaskCancelTS.Token),
 					limitTaskCancelTS.Token);
 #pragma warning restore 4014
 
-				Action fCancel = async () =>
+				//// Cancellation
+
+				Func<Task<string[]>> fCancel = async () =>
 				{
 					using (await sync.theLock.LockAsync(Timeout.InfiniteTimeSpan))
 					{
+						limitTaskCancelTS.Cancel();
+						await wobRes.Stop();
+						fEnableNetworkTraffic(true);
+
 						if (sync.currentOrderId != null)
 						{
+
 							Tuple<bool, bool> cancelRes;
 							while ((cancelRes = await CancelOrderOneAttempt(sync.currentOrderId, cbClient)).Item2)
 							{
 							}
 
-							limitTaskCancelTS.Cancel();
-							wobRes.Stop(); //sidtodo - restart the other threads again - polling data e.t.c.
-
 							if (!cancelRes.Item1)
 							{
-								// Sold ...
-								fOutputSuccess();
-							}
-							else
-							{
-								//sidtodo output cancelled???
+								// Bought/Sold successfully...
+								return new string[] { fSuccessMsgLocal() };
 							}
 						}
+
 					};
+
+					return new string[] { "Successfully cancelled buy/sell task." };
+				};
+
+				inProgressCmd.Ref = new InProgressCommand();
+				inProgressCmd.Ref.fCancel = fCancel;
+
+				// Stop network traffic interfering with the trade
+				fEnableNetworkTraffic(false);
+			}
+
+			return new string[] { "In progress..." };
+		}
+
+		// SELLM [coins]
+		private static async Task<IEnumerable<string>> SellMarket(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			var destCurrencyId = Currency.CurrencyId(prodInfo.destCurrency);
+
+			var destAccount = await cbClient.AccountsService.GetAccountByIdAsync(destCurrencyId);
+
+			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			{
+				//// Check no tasks already in progress
+				if (inProgressCmd.Ref != null)
+				{
+					//sidtodo generic in progress message
+					return new string[] { "Error: A task is already in progress." };
+				}
+
+				decimal amountToSpend;
+				IEnumerable<string> rv = Account.GetAmountToSpendCmdLine(destAccount, cmdSplit, 1, out amountToSpend);
+				if (rv != null) return rv;
+
+				try
+				{
+					if (!await Orders.SellMarket(cbClient, amountToSpend, prod, HandleExceptions, true))
+					{
+						return new string[] { "No internet" };
+					}
+
+					return new string[] { "Success." };
+				}
+				catch (Exception e)
+				{
+					return new string[] { e.Message };
+				}
+			}
+		}
+
+		// SELLMATPRICE [funds/all/half/third/quater] [price CSV]
+		private static async Task<IEnumerable<string>> SellMarketAtPrice(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			Func<decimal, Task<bool>> fSellCmd = async (amountToSpend) =>
+			{
+				return await Orders.SellMarket(cbClient, amountToSpend, prod, HandleExceptions, true);
+			};
+
+			// Note we are using 'GetBuyBestPrice' because that's the price we will be SELLING at
+			return await BuySellMarketAtPrice(inProgressCmd, prodInfo.destCurrency,
+				prodInfo.volNumDecimalPlaces,
+				cmdSplit, cbClient, prod, HandleExceptions, webSocketState, EventOutput,
+				OrderSide.Sell, GetBuyBestPrice, fEnableNetworkTraffic, fSellCmd, "sell");
+		}
+
+		// BUYMATPRICE [funds/all/half/third/quater] [price CSV]
+		private static async Task<IEnumerable<string>> BuyMarketAtPrice(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			Func<decimal,Task<bool>> fBuyCmd = async (amountToSpend) =>
+			{
+				return await Orders.BuyMarket(cbClient, amountToSpend, prod, HandleExceptions, true);
+			};
+
+			// Note we are using 'GetSellBestPrice' because that's the price we will be BUYING at
+			return await BuySellMarketAtPrice(inProgressCmd, prodInfo.sourceCurrency, prodInfo.priceNumDecimalPlaces,
+				cmdSplit, cbClient, prod, HandleExceptions, webSocketState, EventOutput,
+				OrderSide.Buy, GetSellBestPrice, fEnableNetworkTraffic, fBuyCmd, "buy");
+		}
+
+		private static async Task<IEnumerable<string>> BuySellMarketAtPrice(
+			LockedByRef<InProgressCommand> inProgressCmd, Types.Currency currency, int amountTruncatePlaces,
+			string[] cmdSplit, CoinbaseProClient cbClient, ProductType product,
+			Action<Exception> fHandleExceptions, WebSocketState webSocketState,
+			EventOutputter EventOutput, OrderSide orderSide, Func<OrderBookLevel2, decimal> fGetBestPrice,
+			Action<bool> fEnableNetworkTraffic, Func<decimal, Task<bool>> fTradeCmd,
+			string buySellStr)
+		{
+
+			//// Amount to trade
+			var currencyId = Currency.CurrencyId(currency);
+
+			var account = await cbClient.AccountsService.GetAccountByIdAsync(currencyId);
+
+			decimal amountToSpend;
+			IEnumerable<string> rv = Account.GetAmountToSpendCmdLine(account, cmdSplit, 1, out amountToSpend);
+			if (rv != null) return rv;
+
+			//// Validate prices
+			if (cmdSplit.Length <= 2)
+			{
+				return new string[] { $"Price(s) not specified: {cmdSplit[0]} [funds/all/half/third/quater] [price CSV]" };
+			}
+			var priceStrArray = cmdSplit[2].Split(',');
+			var priceArray = new List<decimal>();
+			for (int i = 0; i < priceStrArray.Length; ++i)
+			{
+				var trimmedPriceStr = priceStrArray[i].Trim();
+				if (trimmedPriceStr == "") continue;
+
+				decimal iterPrice;
+				if (!Decimal.TryParse(trimmedPriceStr, out iterPrice))
+				{
+					return new string[] { $"Invalid price: {trimmedPriceStr}"};
+				}
+				priceArray.Add(iterPrice);
+			}
+			if (priceArray.Count == 0) return new string[] { $"Invalid price CSV: {cmdSplit[2]}" };
+
+			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			using (await webSocketState.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			{
+				//// Check no tasks already in progress
+				if (inProgressCmd.Ref != null)
+				{
+					//sidtodo generic in progress message
+					return new string[] { "Error: A task is already in progress." };
+				}
+
+				if (cbClient.WebSocket.State != WebSocket4Net.WebSocketState.Closed &&
+					cbClient.WebSocket.State != WebSocket4Net.WebSocketState.None)
+				{
+					return new string[] { "Error: Websocket is already in use." };
+				}
+
+				//// Start the order book
+				WatchOrderBookRes wobRes = OrderBook.WatchOrderBook(cbClient, product, fHandleExceptions, null,
+					null, webSocketState);
+
+				var taskCancelTs = new CancellationTokenSource();
+
+#pragma warning disable 4014
+				var buySellTask = Task.Run(async () => await BuySellMarketAtPriceTask(amountToSpend, wobRes,
+						EventOutput, cbClient, orderSide, taskCancelTs.Token, priceArray, fGetBestPrice,
+						fEnableNetworkTraffic, fTradeCmd, () => inProgressCmd.Clear(), buySellStr,
+						product),
+					taskCancelTs.Token);
+#pragma warning restore 4014
+
+				Func<Task<string[]>> fCancel = async () =>
+				{
+					taskCancelTs.Cancel();
+					await wobRes.Stop();
+					fEnableNetworkTraffic(true);
+
+					return new string[] { "Successfully cancelled buy/sell task." };
 				};
 
 				inProgressCmd.Ref = new InProgressCommand();
 				inProgressCmd.Ref.fCancel = fCancel;
 			}
 
-			return new string[] { "In progress..." };
+			return new string[] { "In progress.."};
+		}
+
+		async static Task BuySellMarketAtPriceTask(decimal amountToTrade, WatchOrderBookRes wob,
+			EventOutputter EventOutput, CoinbaseProClient cbClient,
+			OrderSide orderSide,CancellationToken ct, IEnumerable<decimal> priceArray,
+			Func<OrderBookLevel2, decimal> fGetBestPrice,
+			Action<bool> fEnableNetworkTraffic, Func<decimal, Task<bool>> fTradeCmd,
+			Func<Task> fClearInProgressCmd, string buySellStr,
+			ProductType product)
+		{
+
+			await Task.Delay(1000); // Give the order book enough time to kick in
+
+			decimal previousBestPrice = 0;
+
+			ProductInfo prodInfo = Products.productInfo[product];
+
+			do
+			{
+				if (ct.IsCancellationRequested) return;
+
+				var ob = wob.GetOrderBook();
+
+				if (ct.IsCancellationRequested) return;
+
+				if (ob != null)
+				{
+					decimal curBestPrice = fGetBestPrice(ob);
+					if (previousBestPrice != 0 && previousBestPrice!= curBestPrice)
+					{
+						var priceHasIncreased = (curBestPrice > previousBestPrice);
+						foreach (var iterTriggerPrice in priceArray)
+						{
+							bool priceIsTriggered;
+							if (priceHasIncreased)
+							{
+								priceIsTriggered = (curBestPrice >= iterTriggerPrice && iterTriggerPrice > previousBestPrice);
+							}
+							else
+							{
+								priceIsTriggered = (curBestPrice <= iterTriggerPrice && iterTriggerPrice < previousBestPrice);
+							}
+
+							if (priceIsTriggered)
+							{
+								fEnableNetworkTraffic(false);
+
+								try
+								{
+									//sidtodo uncomment await RepeatUntilHaveInternet(()=> fTradeCmd(amountToTrade));
+									var text = $"Successful market {buySellStr} at {prodInfo.fSpeakPrice(curBestPrice)}.";
+									EventOutput(new EventOutput[] {new EventOutput(text,null) });
+									Library.AsyncSpeak(text);
+								}
+#pragma warning disable 168
+								catch (Exception e)
+#pragma warning restore 168
+								{
+									Library.AsyncSpeak($"Failed to market {buySellStr} due to an unexpected exception.");
+								}
+
+								await wob.Stop();
+								fEnableNetworkTraffic(true);
+								await fClearInProgressCmd();
+								return;
+							}
+						}
+					}
+
+					previousBestPrice = curBestPrice;
+				}
+
+				await Task.Delay(500);
+			} while (true);
+		}
+
+		// BUYM [funds]
+		private static async Task<IEnumerable<string>> BuyMarket(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			var srcCurrencyId = Currency.CurrencyId(prodInfo.sourceCurrency);
+
+			var srcAccount = await cbClient.AccountsService.GetAccountByIdAsync(srcCurrencyId);
+
+			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			{
+				//// Check no tasks already in progress
+				if (inProgressCmd.Ref != null)
+				{
+					//sidtodo generic in progress message
+					return new string[] { "Error: A task is already in progress." };
+				}
+
+				decimal amountToSpend;
+				IEnumerable<string> rv = Account.GetAmountToSpendCmdLine(srcAccount, cmdSplit, 1, out amountToSpend);
+				if (rv != null) return rv;
+
+				try
+				{
+					if (!await Orders.BuyMarket(cbClient, amountToSpend, prod, HandleExceptions, true))
+					{
+						return new string[] { "No internet" };
+					}
+
+					return new string[] { "Success." };
+				}
+				catch (Exception e)
+				{
+					return new string[] { e.Message };
+				}
+			}
+		}
+
+		private static decimal GetSellBestPrice(OrderBookLevel2 ob)
+		{
+			return ob.asks.ElementAt(0).Key;
+		}
+
+		// SELLL [coins] [under/over cut units: 1-10000] [min price/%]
+		private static async Task<IEnumerable<string>> SellLimit(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+			
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			var destCurrencyId = Currency.CurrencyId(prodInfo.destCurrency);
+
+			var destAccount = await cbClient.AccountsService.GetAccountByIdAsync(destCurrencyId);
+
+			Func<decimal,decimal,string> fSuccessMsg = (amount, price) => $"Sold {amount} {prodInfo.spokenName} at " +
+					$"{prodInfo.fSpeakPrice(price)}";
+
+			Func<decimal,decimal,decimal> fAmountToSpend =
+				(currencyToSpend,price) => TruncateRound(currencyToSpend,prodInfo.volNumDecimalPlaces);
+
+			return await BuySellLimit(cmdSplit, HandleExceptions,
+				prod, cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic,
+				destAccount, "minimum", prodInfo, OrderSide.Sell, GetSellBestPrice, fSuccessMsg, fAmountToSpend);
+		}
+
+		static bool IsInvalidOrderId(Exception e)
+		{
+			var msgLower = e.Message.ToLower();
+			bool rv=
+				(msgLower.IndexOf("invalid") >= 0 ||
+				msgLower.IndexOf("not found") >= 0
+			);
+			return rv;
+		}	
+		
+		static async Task<GetOrderRes> GetOrder(
+			string serverOrderId, CoinbaseProClient cbClient)
+		{
+			try
+			{
+				var res = await cbClient.OrdersService.GetOrderByIdAsync(serverOrderId);
+				return new GetOrderRes(res,false);
+			}
+			catch (Exception e)
+			{
+				bool errorSending = !IsInvalidOrderId(e);
+				return new GetOrderRes(null, errorSending);
+			}
 		}
 
 		static async Task<Tuple<bool,bool>> CancelOrderOneAttempt(string orderId,
@@ -450,7 +804,7 @@ namespace CoinbaseProToolsForm
 			}
 			catch (Exception e)
 			{
-				bool isInvalidOrderId = (e.Message.ToLower().IndexOf("invalid") >= 0);
+				bool isInvalidOrderId = IsInvalidOrderId(e);
 				if (isInvalidOrderId)
 				{
 					return new Tuple<bool,bool>(false,false);
@@ -462,8 +816,8 @@ namespace CoinbaseProToolsForm
 			return new Tuple<bool, bool>(!error, error);
 		}
 
-		////SIDTODO HERE: STOP GETTING THE TRADE DATA WHEN DOING A BUY/SELL.
-		async static Task LimitTask(Func<decimal> fAmountToTrade, WatchOrderBookRes wobRes,
+		//sidtodo here complain about no internet
+		async static Task LimitTask(Func<decimal,decimal> fAmountToTrade, Func<OrderBookLevel2> getOrderBook,
 			EventOutputter EventOutput, ProductInfo prodInfo, CoinbaseProClient cbClient,
 			Func<OrderBookLevel2, decimal, decimal> fGetOurPrice, OrderSide orderSide,
 			Action fOnSuccess, Func<OrderBookLevel2, decimal> fBestPrice,
@@ -477,7 +831,7 @@ namespace CoinbaseProToolsForm
 			do
 			{
 
-				var ob = wobRes.GetOrderBook();
+				var ob = getOrderBook();
 				bool setThePrice = false;
 
 				DateTime updatePriceTime = DateTime.Now;
@@ -491,69 +845,77 @@ namespace CoinbaseProToolsForm
 
 					bool cancelThePrice = (ourCurrentPrice != 0 && newPrice != ourCurrentPrice);
 					setThePrice = (ourCurrentPrice == 0 || newPrice != ourCurrentPrice);
-
-					if (setThePrice || cancelThePrice)
+					
+					using (await synchronisation.theLock.LockAsync(Timeout.InfiniteTimeSpan))
 					{
-						using (await synchronisation.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+						if (ct.IsCancellationRequested) return;
+
+						bool orderHasBeenFilled = false;
+
+						if (cancelThePrice)
 						{
-							if (ct.IsCancellationRequested) return;
 
-							//sidtodo check that we've not been told to stop
-							if (cancelThePrice)
+							var cancelRes = await CancelOrderOneAttempt(synchronisation.currentOrderId, cbClient);
+							orderHasBeenFilled = (!cancelRes.Item1 && !cancelRes.Item2);
+
+							if (!orderHasBeenFilled)
 							{
-
-								var cancelRes=await CancelOrderOneAttempt(synchronisation.currentOrderId, cbClient);
-								bool orderHasBeenSold = (!cancelRes.Item1 && !cancelRes.Item2);
-								if (orderHasBeenSold)
-								{
-									//sidtodo we're finished = done.
-									//sidtodo clear the in progress task???
-									wobRes.Stop();
-									synchronisation.currentOrderId = null;
-									fOnSuccess();
-
-									//sidtodo cancel the in progress task.
-									return;
-								}
-
 								errorSending = cancelRes.Item2;
-								if(!errorSending) synchronisation.currentOrderId = null;
+								if (!errorSending) synchronisation.currentOrderId = null;
 							}
-
-							if (ct.IsCancellationRequested) return;
-
-							if (setThePrice && !errorSending)
-							{
-								decimal currentAmountToTrade = fAmountToTrade();
-								try
-								{
-									var orderResponse = await cbClient.OrdersService.PlaceLimitOrderAsync(
-										orderSide, prodInfo.productType,
-										currentAmountToTrade, newPrice, TimeInForce.Gtc, true);
-
-									updatePriceTime = DateTime.Now;
-									synchronisation.currentOrderId = orderResponse.Id.ToString();
-									synchronisation.currentPrice = newPrice;
-									synchronisation.currentAmountToTrade = currentAmountToTrade;
-
-									ourCurrentPrice = newPrice;
-
-									EventOutput(new EventOutput[] { new EventOutput($"{fBestPrice(ob)} - {ourCurrentPrice}", null) });
-								}
-								catch (Exception e)
-								{
-									errorSending = true;
-								}
-
-							}
-
-							if (ct.IsCancellationRequested) return;
 						}
-					}
+						else if(synchronisation.currentOrderId!=null)
+						{
+							var getOrderRes = await GetOrder(synchronisation.currentOrderId, cbClient);
+							errorSending = getOrderRes.Item2;
+							orderHasBeenFilled = !errorSending && getOrderRes.Item1 == null;
+						}
 
+						if (orderHasBeenFilled)
+						{
+							// Success
+							synchronisation.currentOrderId = null;
+							fOnSuccess();
+							return;
+						}
+
+						if (ct.IsCancellationRequested) return;
+
+						if (setThePrice && !errorSending)
+						{
+							decimal currentAmountToTrade = fAmountToTrade(newPrice);
+							try
+							{
+								var orderResponse = await cbClient.OrdersService.PlaceLimitOrderAsync(
+									orderSide, prodInfo.productType,
+									currentAmountToTrade, newPrice, TimeInForce.Gtc, true);
+
+								updatePriceTime = DateTime.Now;
+								synchronisation.currentOrderId = orderResponse.Id.ToString();
+								synchronisation.currentPrice = newPrice;
+								synchronisation.currentAmountToTrade = currentAmountToTrade;
+
+								ourCurrentPrice = newPrice;
+
+								EventOutput(new EventOutput[] { new EventOutput($"{fBestPrice(ob)} - {ourCurrentPrice}", null) });
+							}
+#pragma warning disable 168
+							catch (Exception e)
+#pragma warning restore 168
+							{
+								//sidtodo !!!!!!!!!!!!!!!!!!!!!!!!!!!!! output insufficient funds, adn insufficient size errors
+								errorSending = true;
+							}
+
+						}
+
+						if (ct.IsCancellationRequested) return;
+					}
 				}
 
-				int sleepMs = 100;
+				if (ct.IsCancellationRequested) return;
+
+				int sleepMs = 1000;
 				if (errorSending)
 				{
 					sleepMs = 1000;
@@ -570,84 +932,40 @@ namespace CoinbaseProToolsForm
 			} while (true);
 		}
 
-		// BUYL [funds] [slippage]
-		//sidtodo unfinished
+		private static decimal GetBuyBestPrice(OrderBookLevel2 ob)
+		{
+			return ob.bids.ElementAt(ob.bids.Count - 1).Key;
+		}
+
+		// BUYL [funds] [under/overcut amount] [max price]
 		private static async Task<IEnumerable<string>> BuyLimit(string[] cmdSplit,
 			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
 			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
-			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd)
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState,Action<bool> fEnableNetworkTraffic)
 		{
 
 			var prod = getActiveProduct();
 			var prodInfo = Products.productInfo[prod];
-			//await cbClient.OrdersService.PlaceLimitOrderAsync(OrderSide.Buy, prod, 1.0M, 22.80M, TimeInForce.Gtc, true);
 
 			var sourceCurrencyId= Currency.CurrencyId(prodInfo.sourceCurrency);
 
 			var sourceAccount = await cbClient.AccountsService.GetAccountByIdAsync(sourceCurrencyId);
 
-			decimal amountToSpend;
-			if (cmdSplit.Length >=2 && !StringCompareNoCase(cmdSplit[1],"all"))
+			Func<decimal, decimal, string> fSuccessMsg = (amount, price) => $"Bought {amount} {prodInfo.spokenName} at " +
+					  $"{prodInfo.fSpeakPrice(price)}";
+			
+			Func<decimal, decimal, decimal> fAmountToBuy = (currencyToSpend, price) =>
 			{
-				if (!Decimal.TryParse(cmdSplit[1], out amountToSpend) || amountToSpend<=0)
-				{
-					return new string[] { $"Invalid amount: {cmdSplit[1]}." };
-				}
+				decimal amount= TruncateRound(currencyToSpend / price, prodInfo.volNumDecimalPlaces);
+				return amount;
+			};
 
-				amountToSpend = Decimal.Round(amountToSpend, prodInfo.priceNumDecimalPlaces);
+			return await BuySellLimit(cmdSplit, HandleExceptions,
+				prod, cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic,
+				sourceAccount, "maximum", prodInfo, OrderSide.Buy, GetBuyBestPrice, fSuccessMsg, fAmountToBuy);
 
-				if (amountToSpend > sourceAccount.Available)
-				{
-					return new string[] { $"{prodInfo.fSpeakPrice(amountToSpend)} is more than is available "+
-						$"({prodInfo.fSpeakPrice(sourceAccount.Available)})." };
-				}
-			}
-			else
-			{
-				amountToSpend = sourceAccount.Available;
-			}
-
-			decimal slippage = 0.005M; // Default to half a percent in slippage
-			if (cmdSplit.Length == 3)
-			{
-				if (!Decimal.TryParse(cmdSplit[2], out slippage) || slippage <= 0 || slippage>0.05M)
-				{
-					return new string[] { $"Invalid slippage: {cmdSplit[2]}." };
-				}
-			}
-
-			//sidtodo what if the order book is already running?
-			//sidtodo parameterise how many decimal places
-			FAmountInTopList fAmountInTopList = (topBid, topAsk) => Decimal.Round(amountToSpend / topBid,5)+prodInfo.smallestVolumeDivision;
-
-			WatchOrderBookRes res=OrderBook.WatchOrderBook(cbClient, prod, HandleExceptions, fAmountInTopList,
-				null);
-
-			return new string[] { "In progress..." };
 		}
-
-		//sidtodo slippage
-		//private static Action<OrderBookLevel2> BuyLimitCallback(decimal amountToSpend,
-		//	EventOutputter EventOutput, ProductInfo prodInfo)
-		//{
-		//	//sidtodo if the cancel fails then it's been filled and tehrefore stop.
-
-		//	//how to lock??
-
-		//	// every 1000MS, cancel existing, then update price???
-
-		//	// time in force: 1000MS???
-
-		//	// rather than have callback, should we just poll every 1000 MS??
-
-		//	return (state) =>
-		//	{
-		//		decimal topBid = state.bids.ElementAt(state.bids.Count - 1).Key;
-
-		//		EventOutput(new EventOutput[] {
-		//			new EventOutput($"Top bid is {topBid}, buy at {topBid + prodInfo.smallestPriceDivision}",null)});
-		//	};
-		//}
 
 		// tw showsummary [start date] <start time> [end date] <end time>
 		private static async Task<IEnumerable<string>> ShowSummary(string[] cmdSplit,

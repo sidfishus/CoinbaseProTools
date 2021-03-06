@@ -41,6 +41,7 @@ namespace CoinbaseProToolsForm
 		public decimal smallestPriceDivision; //sidtodo do this for other cryptos
 		public decimal smallestVolumeDivision; //sidtodo do this for other cryptos
 		public int priceNumDecimalPlaces; //sidtodo do this for other cryptos
+		public int volNumDecimalPlaces; //sidtodo do this for other cryptos
 	}
 
 	public static class Products
@@ -136,8 +137,9 @@ namespace CoinbaseProToolsForm
 			chainLink.sourceCurrency = Types.Currency.GBP;
 			chainLink.destCurrency= Types.Currency.LINK;
 			chainLink.smallestPriceDivision = 0.00001M;
-			chainLink.smallestVolumeDivision = 0.002M;
+			chainLink.smallestVolumeDivision = 0.01M;
 			chainLink.priceNumDecimalPlaces = 5;
+			chainLink.volNumDecimalPlaces = 2;
 			info.Add(ProductType.LinkGbp, chainLink);
 
 			var nucypher = new ProductInfo { productType = ProductType.NuGbp, name = "NuCypher", spokenName="New cypher", otherNames = new string[]{ "nu", "nugbp", "cypher" } };

@@ -10,8 +10,6 @@ namespace CoinbaseProToolsForm
 	public class State
 	{
 
-		public OrderBookState orderBookState=null;
-
 		public ProductsState productsState = null;
 
 		public OptionsState options;

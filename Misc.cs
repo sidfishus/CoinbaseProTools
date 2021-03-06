@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CoinbasePro;
 
 namespace CoinbaseProToolsForm
 {
@@ -71,6 +72,53 @@ namespace CoinbaseProToolsForm
 			}
 
 			return null;
+		}
+
+		public static decimal TruncateRound(decimal val, int numDecimalPlaces)
+		{
+			decimal truncatePower = (int)Math.Pow(10, numDecimalPlaces);
+			// This removes the decimal after the number of places
+			Int64 truncatedAmountP1 = (Int64)(val * truncatePower);
+			// Turns it back to a decimal
+			decimal truncatedAmountP2 = truncatedAmountP1 / truncatePower;
+			// Make sure it's rounded
+			decimal fullRoundedAmount = Decimal.Round(truncatedAmountP2, numDecimalPlaces);
+			return fullRoundedAmount;
+		}
+
+		public static bool IsNoInternetException(Exception e)
+		{
+			var msg = e.ToString();
+			if (msg.IndexOf("hostname") >=0 ||
+				msg.IndexOf("resolved") >= 0)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		public static async Task RepeatUntilHaveInternet(Func<Task<bool>> fAction)
+		{
+			DateTime lastComplainedTs = DateTime.Now.AddDays(-1);
+			do
+			{
+				if (await fAction())
+				{
+					// Done
+					break;
+				}
+
+				DateTime now = DateTime.Now;
+				if ((now - lastComplainedTs).TotalSeconds > 30)
+				{
+					lastComplainedTs = now;
+					Library.AsyncSpeak("No internet.");
+				}
+
+				await Task.Delay(1000);
+
+			} while (true);
 		}
 	}
 }

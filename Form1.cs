@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using static CoinbaseProToolsForm.Library;
 using CoinbasePro;
-using GetSetOrderBookState = System.Tuple<System.Func<CoinbaseProToolsForm.OrderBookState>, System.Action<CoinbaseProToolsForm.OrderBookState>>;
 using Types = CoinbasePro.Shared.Types;
 using GetSetProductsState = System.Tuple<System.Func<CoinbaseProToolsForm.ProductsState>, System.Action<CoinbaseProToolsForm.ProductsState>>;
 using ProductStatsDictionary = System.Collections.Generic.Dictionary<CoinbasePro.Shared.Types.ProductType, CoinbasePro.Services.Products.Types.ProductStats>;
@@ -48,7 +47,7 @@ namespace CoinbaseProToolsForm
 		Func<ProductStatsDictionary> getProductStatsInTheBkg;
 		Action<Exception> HandleExceptions;
 		LockedByRef<InProgressCommand> inProgressCmd;
-
+		WebSocketState webSocketState;
 		Func<ProductType> getActiveProduct;
 		Func<ProductType, bool> setActiveProduct;
 
@@ -77,6 +76,9 @@ namespace CoinbaseProToolsForm
 
 		delegate void ThreadSafeCallDelegate(Form1 form, IEnumerable<EventOutput> textArray,ref DateTimeOffset? lastEvent);
 
+		Func<bool> fNetworkTrafficEnabled;
+		Action<bool> fEnableNetworkTraffic;
+
 		public Form1(State state, CoinbaseProClient cbClient,
 			Func<Form1> GetTheActiveForm, Exception previousException,
 			ExceptionFileWriter exceptionFileWriter, Func<ProductStatsDictionary> getProductStatsInTheBkg,
@@ -91,7 +93,10 @@ namespace CoinbaseProToolsForm
 			ProductWideSetting speechSetting,
 			ProductWideSetting largeBuySetting,
 			ProductWideSetting largeSellSetting,
-			LockedByRef<InProgressCommand> inProgressCmd)
+			LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState,
+			Func<bool> fNetworkTrafficEnabled,
+			Action<bool> fEnableNetworkTraffic)
 		{
 			this.state = state;
 			this.cbClient = cbClient;
@@ -115,6 +120,9 @@ namespace CoinbaseProToolsForm
 			this.rapidLargeBuySetting = largeBuySetting;
 			this.rapidLargeSellSetting = largeSellSetting;
 			this.inProgressCmd = inProgressCmd;
+			this.webSocketState = webSocketState;
+			this.fNetworkTrafficEnabled= fNetworkTrafficEnabled;
+			this.fEnableNetworkTraffic= fEnableNetworkTraffic;
 
 			InitializeComponent();
 		}
@@ -124,11 +132,12 @@ namespace CoinbaseProToolsForm
 			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
 			{
 				if (inProgressCmd.Ref == null) return new string[] { "Error: There is no task in progress." };
-				inProgressCmd.Ref.fCancel();
-				inProgressCmd.Ref = null;
-			}
 
-			return null;
+				var output=await inProgressCmd.Ref.fCancel();
+				inProgressCmd.Ref = null;
+
+				return output;
+			}
 		}
 
 		private static ExceptionUIWriter CreateUIExceptionWriter(EventOutputter eventOutputter)
@@ -338,12 +347,15 @@ namespace CoinbaseProToolsForm
 					else if (StringCompareNoCase(cmdSplit[0], "OB")) // order book
 					{
 						output = OrderBook.OrderBookCmd(cbClient, cmdSplit,
-							new GetSetOrderBookState(() => state.orderBookState, (upd) => state.orderBookState = upd),
 							eventOutputter, exceptionUIWriter, exceptionFileWriter);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "TW") ||
 						StringCompareNoCase(cmdSplit[0], "BUYL") ||
-						StringCompareNoCase(cmdSplit[0], "SELLL")) // Trade watch
+						StringCompareNoCase(cmdSplit[0], "SELLL") ||
+						StringCompareNoCase(cmdSplit[0], "BUYM") ||
+						StringCompareNoCase(cmdSplit[0], "SELLM") ||
+						StringCompareNoCase(cmdSplit[0], "BUYMATPRICE") ||
+						StringCompareNoCase(cmdSplit[0], "SELLMATPRICE")) // Trade watch
 					{
 						output = await TradeWatch.CmdLine(cbClient, cmdSplit, eventOutputter,
 							this.getProductStatsInTheBkg,
@@ -352,7 +364,9 @@ namespace CoinbaseProToolsForm
 							this.newTradesTriggers,
 							this.getActiveProduct,
 							this.slUpdateTriggers,
-							this.inProgressCmd);
+							this.inProgressCmd,
+							this.webSocketState,
+							this.fEnableNetworkTraffic);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "ON"))
 					{

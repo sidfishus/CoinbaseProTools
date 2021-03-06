@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using static CoinbaseProToolsForm.Library;
 using CoinbasePro;
-using GetSetOrderBookState = System.Tuple<System.Func<CoinbaseProToolsForm.OrderBookState>, System.Action<CoinbaseProToolsForm.OrderBookState>>;
 using Types = CoinbasePro.Shared.Types;
 using GetSetProductsState = System.Tuple<System.Func<CoinbaseProToolsForm.ProductsState>, System.Action<CoinbaseProToolsForm.ProductsState>>;
 using ProductStatsDictionary = System.Collections.Generic.Dictionary<CoinbasePro.Shared.Types.ProductType, CoinbasePro.Services.Products.Types.ProductStats>;
@@ -105,6 +104,12 @@ namespace CoinbaseProToolsForm
 		static void PerpetuallyRunTheForm(State state, CoinbaseProClient cbClient)
 		{
 
+			WebSocketState webSocketState = new WebSocketState();
+
+			bool networkTrafficEnabled = true;
+			Action<bool> fEnableNetworkTraffic = (enable) => networkTrafficEnabled = enable;
+			Func<bool> fNetworkTrafficEnabled = () => networkTrafficEnabled;
+
 			ProductType activeProduct = ProductType.LinkGbp;
 			Func<ProductType> getActiveProduct = () => activeProduct;
 
@@ -197,7 +202,7 @@ namespace CoinbaseProToolsForm
 						addNewTradesTrigger, removeNewTradesTrigger, newTradesTriggers,
 						twTriggers, rapidPriceChangeUpSetting, rapidPriceChangeDownSetting,
 						speechSetting, rapidLargeVolumeUp, rapidLargeVolumeDown,
-						inProgressCmd);
+						inProgressCmd, webSocketState, fNetworkTrafficEnabled, fEnableNetworkTraffic);
 					exceptionUIWriter = form.exceptionUIWriter;
 					eventOutputter = form.eventOutputter;
 
@@ -221,7 +226,7 @@ namespace CoinbaseProToolsForm
 
 							PollForUpdates.PollForUpdatesAsync(cbClient, WriteExceptionEverywhere, tradeHistory, eventOutputter,
 								getProductStatsInTheBkg, twSummaryLevelUpdateCallback, newTradesCallback, productType,
-								() => (productType == getActiveProduct()), complain);
+								() => (productType == getActiveProduct()), complain, fNetworkTrafficEnabled);
 						};
 #pragma warning restore 4014
 
@@ -232,8 +237,8 @@ namespace CoinbaseProToolsForm
 							var tradeHistory = allTradeHistory[prodType];
 #pragma warning disable 4014
 							TradeHistory.LoadApproxLast24Hour(cbClient, tradeHistory, WriteExceptionEverywhere,
-								eventOutputter, () => pollForUpdates(prodType, tradeHistory, isFirst), getProductStatsInTheBkg, prodType,
-								getActiveProduct);
+								eventOutputter, () => pollForUpdates(prodType, tradeHistory, isFirst), getProductStatsInTheBkg,
+								prodType,getActiveProduct);
 #pragma warning restore 4014
 						}
 					}

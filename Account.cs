@@ -7,6 +7,8 @@ using CoinbasePro;
 using Types=CoinbasePro.Shared.Types;
 using ExceptionFileWriter = System.Action<string>;
 using ExceptionUIWriter = System.Action<string>;
+using Models = CoinbasePro.Services.Accounts.Models;
+using static CoinbaseProToolsForm.Library;
 
 namespace CoinbaseProToolsForm
 {
@@ -60,6 +62,50 @@ namespace CoinbaseProToolsForm
 		{
 			return $"Currency={account.Currency.ToString()}, Available={Decimal.Round(account.Available, 2)}, " +
 				$"balance={Decimal.Round(account.Balance, 2)}, hold={Decimal.Round(account.Hold, 2)}";
+		}
+
+		public static IEnumerable<string> GetAmountToSpendCmdLine(Models.Account account, string[] cmdSplit, int idx,
+			out decimal amountToSpend)
+		{
+			amountToSpend = 0;
+
+			if (cmdSplit.Length > idx && !StringCompareNoCase(cmdSplit[idx], "all"))
+			{
+
+				if (StringCompareNoCase(cmdSplit[idx], "half"))
+				{
+					amountToSpend = account.Available / 2;
+				}
+				else if (StringCompareNoCase(cmdSplit[idx], "third"))
+				{
+					amountToSpend = account.Available / 3;
+				}
+				else if (StringCompareNoCase(cmdSplit[idx], "quater"))
+				{
+					amountToSpend = account.Available / 4;
+				}
+				else
+				{
+					if (!Decimal.TryParse(cmdSplit[idx], out amountToSpend) || amountToSpend <= 0)
+					{
+						return new string[] { $"Invalid amount: {cmdSplit[idx]}." };
+					}
+
+					if ((account.Available - amountToSpend) < 1) amountToSpend = account.Available;
+
+					if (amountToSpend > account.Available)
+					{
+						return new string[] { $"{amountToSpend} is more than is available "+
+								$"({account.Available})." };
+					}
+				}
+			}
+			else
+			{
+				amountToSpend = account.Available;
+			}
+
+			return null;
 		}
 	}
 }

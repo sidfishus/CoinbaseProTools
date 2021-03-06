@@ -153,6 +153,8 @@
     <Compile Include="Misc.cs" />
     <Compile Include="Options.cs" />
     <Compile Include="OrderBook.cs" />
+    <Compile Include="Orders.cs" />
+    <Compile Include="PerformAtEndOfScope.cs" />
     <Compile Include="PollForUpdates.cs" />
     <Compile Include="Products.cs" />
     <Compile Include="Program.cs" />
@@ -165,6 +167,7 @@
     <Compile Include="TradeSummary.cs" />
     <Compile Include="TradeWatch.cs" />
     <Compile Include="Trigger.cs" />
+    <Compile Include="WebSocket.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
     </EmbeddedResource>
