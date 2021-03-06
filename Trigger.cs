@@ -688,8 +688,6 @@ namespace CoinbaseProToolsForm
 					}
 
 					var text = getAlertMessage(largestVolumeMs, largestAccumulatedVolumePercentageOf24Hour);
-					//sidtodo remove
-					text += $"{matchingOuterTrade.TradeId} {matchingInnerTrade.TradeId}";
 
 					if (fIsSpeechEnabled())
 					{

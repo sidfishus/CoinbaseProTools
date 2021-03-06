@@ -23,7 +23,8 @@ namespace CoinbaseProToolsForm
 			ProductWideSetting getSetRapidPriceChangeUpEnabled, ProductWideSetting getSetRapidPriceChangeDownEnabled,
 			Func<ProductType> getActiveProduct,
 			ProductWideSetting speechEnabledSetting,
-			ProductWideSetting getSetRapidLargeBuySetting, ProductWideSetting getSetRapidLargeSellSetting)
+			ProductWideSetting getSetRapidLargeBuySetting, ProductWideSetting getSetRapidLargeSellSetting,
+			ProductWideSetting steadyPriceIncreaseTrigger, ProductWideSetting steadyPriceDecreaseTrigger)
 		{
 
 			if (Library.StringCompareNoCase(cmdSplit[1], "SPEAKPRICE"))
@@ -57,6 +58,15 @@ namespace CoinbaseProToolsForm
 				Library.StringCompareNoCase(cmdSplit[1], "RAPIDLARGESELL"))
 			{
 				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, getSetRapidLargeSellSetting, enable);
+			}
+
+			else if (Library.StringCompareNoCase(cmdSplit[1], "SPCU"))
+			{
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, steadyPriceIncreaseTrigger, enable);
+			}
+			else if (Library.StringCompareNoCase(cmdSplit[1], "SPCD"))
+			{
+				return GetOrSetProductWideSetting(cmdSplit, getActiveProduct, steadyPriceDecreaseTrigger, enable);
 			}
 
 			return new string[] { "Unknown option." };

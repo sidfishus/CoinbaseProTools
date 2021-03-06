@@ -492,7 +492,7 @@ namespace CoinbaseProToolsForm
 			}
 		}
 
-		// SELLMATPRICE [funds/all/half/third/quater] [price CSV]
+		// SELLMATPRICE [funds/all/half/third/quarter] [price CSV]
 		private static async Task<IEnumerable<string>> SellMarketAtPrice(string[] cmdSplit,
 			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
 			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
@@ -514,7 +514,7 @@ namespace CoinbaseProToolsForm
 				OrderSide.Sell, GetBuyBestPrice, fEnableNetworkTraffic, fSellCmd, "sell");
 		}
 
-		// BUYMATPRICE [funds/all/half/third/quater] [price CSV]
+		// BUYMATPRICE [funds/all/half/third/quarter] [price CSV]
 		private static async Task<IEnumerable<string>> BuyMarketAtPrice(string[] cmdSplit,
 			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
 			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
@@ -556,7 +556,7 @@ namespace CoinbaseProToolsForm
 			//// Validate prices
 			if (cmdSplit.Length <= 2)
 			{
-				return new string[] { $"Price(s) not specified: {cmdSplit[0]} [funds/all/half/third/quater] [price CSV]" };
+				return new string[] { $"Price(s) not specified: {cmdSplit[0]} [funds/all/half/third/quarter] [price CSV]" };
 			}
 			var priceStrArray = cmdSplit[2].Split(',');
 			var priceArray = new List<decimal>();

@@ -80,7 +80,7 @@ namespace CoinbaseProToolsForm
 				{
 					amountToSpend = account.Available / 3;
 				}
-				else if (StringCompareNoCase(cmdSplit[idx], "quater"))
+				else if (StringCompareNoCase(cmdSplit[idx], "quarter"))
 				{
 					amountToSpend = account.Available / 4;
 				}

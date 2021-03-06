@@ -202,7 +202,8 @@ namespace CoinbaseProToolsForm
 						addNewTradesTrigger, removeNewTradesTrigger, newTradesTriggers,
 						twTriggers, rapidPriceChangeUpSetting, rapidPriceChangeDownSetting,
 						speechSetting, rapidLargeVolumeUp, rapidLargeVolumeDown,
-						inProgressCmd, webSocketState, fNetworkTrafficEnabled, fEnableNetworkTraffic);
+						inProgressCmd, webSocketState, fNetworkTrafficEnabled, fEnableNetworkTraffic,
+						steadyPriceIncreaseTrigger, steadyPriceDecreaseTrigger);
 					exceptionUIWriter = form.exceptionUIWriter;
 					eventOutputter = form.eventOutputter;
 
@@ -394,7 +395,7 @@ namespace CoinbaseProToolsForm
 				return (timeDiff, priceChangeRatio) =>
 				{
 					return $"{Products.GetProductSpokenName(productType)} steady price decrease, " +
-					 $"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+					 $"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / (1000*60)} minutes";
 				};
 			};
 
@@ -403,7 +404,7 @@ namespace CoinbaseProToolsForm
 				return (timeDiff, priceChangeRatio) =>
 				{
 					return $"{Products.GetProductSpokenName(productType)} steady price increase, " +
-						$"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / 1000} seconds";
+						$"{Decimal.Round(priceChangeRatio, 2)}% in {Math.Abs(timeDiff) / (1000*60)} minutes";
 				};
 			};
 			

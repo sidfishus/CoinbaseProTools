@@ -62,6 +62,8 @@ namespace CoinbaseProToolsForm
 		ProductWideSetting speechSetting;
 		ProductWideSetting rapidLargeBuySetting;
 		ProductWideSetting rapidLargeSellSetting;
+		ProductWideSetting steadyPriceIncreaseTrigger;
+		ProductWideSetting steadyPriceDecreaseTrigger;
 
 		public ExceptionUIWriter exceptionUIWriter
 		{
@@ -96,7 +98,9 @@ namespace CoinbaseProToolsForm
 			LockedByRef<InProgressCommand> inProgressCmd,
 			WebSocketState webSocketState,
 			Func<bool> fNetworkTrafficEnabled,
-			Action<bool> fEnableNetworkTraffic)
+			Action<bool> fEnableNetworkTraffic,
+			ProductWideSetting steadyPriceIncreaseTrigger,
+			ProductWideSetting steadyPriceDecreaseTrigger)
 		{
 			this.state = state;
 			this.cbClient = cbClient;
@@ -123,6 +127,8 @@ namespace CoinbaseProToolsForm
 			this.webSocketState = webSocketState;
 			this.fNetworkTrafficEnabled= fNetworkTrafficEnabled;
 			this.fEnableNetworkTraffic= fEnableNetworkTraffic;
+			this.steadyPriceIncreaseTrigger = steadyPriceIncreaseTrigger;
+			this.steadyPriceDecreaseTrigger = steadyPriceDecreaseTrigger;
 
 			InitializeComponent();
 		}
@@ -373,21 +379,24 @@ namespace CoinbaseProToolsForm
 						output = Options.CmdLine(this.state.options, cmdSplit, true,
 							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
 							this.getActiveProduct, this.speechSetting,
-							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting,
+							this.steadyPriceIncreaseTrigger, this.steadyPriceDecreaseTrigger);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "OFF"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, false,
 							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
 							this.getActiveProduct, this.speechSetting,
-							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting,
+							this.steadyPriceIncreaseTrigger, this.steadyPriceDecreaseTrigger);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "SHOW"))
 					{
 						output = Options.CmdLine(this.state.options, cmdSplit, null,
 							this.rapidPriceChangeUpSetting, this.rapidPriceChangeDownSetting,
 							this.getActiveProduct, this.speechSetting,
-							this.rapidLargeBuySetting, this.rapidLargeSellSetting);
+							this.rapidLargeBuySetting, this.rapidLargeSellSetting,
+							this.steadyPriceIncreaseTrigger, this.steadyPriceDecreaseTrigger);
 					}
 					else if (StringCompareNoCase(cmdSplit[0], "PROD"))
 					{
