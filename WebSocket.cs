@@ -14,6 +14,7 @@ namespace CoinbaseProToolsForm
 		public EventHandler<WebfeedEventArgs<Snapshot>> onSnapshotReceived;
 		public EventHandler<WebfeedEventArgs<Level2>> onLevel2Received;
 		public EventHandler<WebfeedEventArgs<SuperSocket.ClientEngine.ErrorEventArgs>> onWebSocketError;
+		public DateTime lastComplainedNoInternet=DateTime.Now.AddDays(-1);
 		public readonly TimedLock theLock = new TimedLock();
 	}
 

@@ -139,6 +139,7 @@
   <ItemGroup>
     <Compile Include="Account.cs" />
     <Compile Include="BurstQueue.cs" />
+    <Compile Include="Candle.cs" />
     <Compile Include="LockedByRef.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Currency.cs" />

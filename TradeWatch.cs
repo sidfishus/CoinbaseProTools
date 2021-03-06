@@ -42,6 +42,8 @@ namespace CoinbaseProToolsForm
 	{
 
 		static readonly string s_ShowSummaryCmdLine= "tw showsummary [start date] <start time> [end date] <end time>";
+		static readonly string s_BuyTheDipCmdLine =
+			"BUYTHEDIP <funds/all/half/third/quarter> <max price> [optional rebuy price]";
 
 		public static async Task<IEnumerable<string>> CmdLine(CoinbaseProClient cbClient,
 			string[] cmdSplit, EventOutputter EventOutput,
@@ -63,6 +65,7 @@ namespace CoinbaseProToolsForm
 				return await SellLimit(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
 					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
 			}
+
 			else if (StringCompareNoCase(cmdSplit[0], "BUYM"))
 			{
 				return await BuyMarket(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
@@ -73,6 +76,7 @@ namespace CoinbaseProToolsForm
 				return await SellMarket(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
 					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
 			}
+
 			else if (StringCompareNoCase(cmdSplit[0], "BUYMATPRICE"))
 			{
 				return await BuyMarketAtPrice(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
@@ -81,6 +85,12 @@ namespace CoinbaseProToolsForm
 			else if (StringCompareNoCase(cmdSplit[0], "SELLMATPRICE"))
 			{
 				return await SellMarketAtPrice(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
+					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
+			}
+
+			else if (StringCompareNoCase(cmdSplit[0], "BUYTHEDIP"))
+			{
+				return await BuyTheDip(cmdSplit, HandleExceptions, getProdStats, getActiveProduct,
 					cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic);
 			}
 
@@ -402,7 +412,7 @@ namespace CoinbaseProToolsForm
 				Func<decimal, decimal> fAmountToTradeLocal = (price) => fAmountToTrade(amountToSpend, price);
 
 #pragma warning disable 4014
-				var limitTask = Task.Run(async () => await LimitTask(fAmountToTradeLocal, wobRes.GetOrderBook,
+				Task.Run(async () => await LimitTask(fAmountToTradeLocal, wobRes.GetOrderBook,
 						EventOutput, prodInfo, cbClient,
 						fGetOurPrice, orderSide, fOnSuccess, fBestPrice, sync, limitTaskCancelTS.Token),
 					limitTaskCancelTS.Token);
@@ -490,6 +500,239 @@ namespace CoinbaseProToolsForm
 					return new string[] { e.Message };
 				}
 			}
+		}
+
+		// BUYTHEDIP <funds/all/half/third/quarter> <max price> [optional rebuy price]
+		private static async Task<IEnumerable<string>> BuyTheDip(string[] cmdSplit,
+			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
+			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
+			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
+		{
+			if (cmdSplit.Length != 3 && cmdSplit.Length != 4)
+			{
+				return new string[] { $"Invalid parameters: {s_BuyTheDipCmdLine}"};
+			}
+
+			//// Amount to spend
+			var prod = getActiveProduct();
+			var prodInfo = Products.productInfo[prod];
+
+			var currencyId = Currency.CurrencyId(prodInfo.sourceCurrency);
+
+			var account = await cbClient.AccountsService.GetAccountByIdAsync(currencyId);
+
+			decimal amountToSpend;
+			IEnumerable<string> rv = Account.GetAmountToSpendCmdLine(account, cmdSplit, 1, out amountToSpend);
+			if (rv != null) return rv;
+
+			//// Check no tasks already in progress
+			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			using (await webSocketState.theLock.LockAsync(Timeout.InfiniteTimeSpan))
+			{
+				if (inProgressCmd.Ref != null)
+				{
+					//sidtodo generic in progress message
+					return new string[] { "Error: A task is already in progress." };
+				}
+
+				if (cbClient.WebSocket.State != WebSocket4Net.WebSocketState.Closed &&
+					cbClient.WebSocket.State != WebSocket4Net.WebSocketState.None)
+				{
+					return new string[] { "Error: Websocket is already in use." };
+				}
+				
+				////// Min fall percentage
+				//var minFallPercentageStr = cmdSplit[2];
+				//decimal minFallPercentage = 0.01M; // 1%
+				//if (!StringCompareNoCase(minFallPercentageStr, "DEF") &&
+				//	!StringCompareNoCase(minFallPercentageStr, "DEFAULT"))
+				//{
+				//	if (!Decimal.TryParse(minFallPercentageStr, out minFallPercentage) || minFallPercentage<=0.5M || minFallPercentage>=10)
+				//	{
+				//		return new string[] { $"Invalid minFallPercentageStr {minFallPercentageStr}: {s_BuyTheDipCmdLine}" };
+				//	}
+				//	minFallPercentage /= 100;
+				//}
+
+				//// Max price
+				decimal maxPrice;
+				rv = GetPriceCmdLine(cmdSplit, 2, "max price", out maxPrice);
+				if (rv != null) return rv;
+
+				//// Rebuy price
+				decimal optRebuyPrice=0;
+				if (cmdSplit.Length == 4)
+				{
+					rv = GetPriceCmdLine(cmdSplit, 3, "rebuy price", out optRebuyPrice);
+					if (rv != null) return rv;
+					if (optRebuyPrice <= maxPrice)
+					{
+						return new string[] {
+							$"Rebuy price is less than the max price, this makes no sense (do you know what you're doing??): {s_BuyTheDipCmdLine}"};
+					}
+				}
+
+				//// Start watching the order book
+				WatchOrderBookRes wobRes = OrderBook.WatchOrderBook(cbClient, prod, HandleExceptions, null,
+					null, webSocketState);
+
+				//// Start the buy the dip thread
+				var taskCancelTs = new CancellationTokenSource();
+
+#pragma warning disable 4014
+				Task.Run(async () => await BuyTheDipTask(amountToSpend, wobRes,
+						EventOutput, cbClient, taskCancelTs.Token, fEnableNetworkTraffic, () => inProgressCmd.Clear(),
+						prod, maxPrice, optRebuyPrice, HandleExceptions),
+					taskCancelTs.Token);
+#pragma warning restore 4014
+
+				Func<Task<string[]>> fCancel = async () =>
+				{
+					taskCancelTs.Cancel();
+					await wobRes.Stop();
+					fEnableNetworkTraffic(true);
+
+					return new string[] { "Successfully cancelled buy the dip task." };
+				};
+
+				inProgressCmd.Ref = new InProgressCommand();
+				inProgressCmd.Ref.fCancel = fCancel;
+			}
+
+			return new string[] { "In progress.." };
+		}
+
+		async static Task BuyTheDipTask(decimal amountToTrade, WatchOrderBookRes wob,
+			EventOutputter EventOutput, CoinbaseProClient cbClient,
+			CancellationToken ct, Action<bool> fEnableNetworkTraffic,
+			Func<Task> fClearInProgressCmd, ProductType product, decimal maxPrice,
+			decimal optRebuyPrice, Action<Exception> fHandleExceptions)
+		{
+
+			Action<string,bool> fOutputSingleLine = (text,speak) =>
+			{
+				EventOutput(new EventOutput[] { new EventOutput(text,null)});
+				if (speak) Library.AsyncSpeak(text);
+			};
+
+			ProductInfo prodInfo = Products.productInfo[product];
+
+			Func<decimal,decimal,Task> fDoTheBuy = async (amount, price) =>
+			{
+				fEnableNetworkTraffic(false);
+
+				try
+				{
+					await RepeatUntilHaveInternet(() => Orders.BuyMarket(cbClient, amount, product, fHandleExceptions, true));
+					var text = $"Successful market buy at {prodInfo.fSpeakPrice(price)}.";
+					fOutputSingleLine(text, true);
+				}
+#pragma warning disable 168
+				catch (Exception e)
+#pragma warning restore 168
+				{
+					Library.AsyncSpeak($"Failed to market buy due to an unexpected exception.");
+				}
+
+				await wob.Stop();
+
+				await fClearInProgressCmd();
+
+				fEnableNetworkTraffic(true);
+			};
+
+			await Task.Delay(1000); // Give the order book enough time to kick in
+
+			var fiveMinCandle=new CandleState(1*60); //sidtodo change to 5 mins
+			var tenMinCandle= new CandleState(10*60);
+			var fifteenMinCandle=new CandleState(15*60);
+
+			CandleState dipCandle = null;
+
+			decimal previousBestPrice = 0;
+			decimal[] triggerPriceArray = new decimal[] { optRebuyPrice};
+
+			do
+			{
+				if (ct.IsCancellationRequested) return;
+
+				var ob = wob.GetOrderBook();
+
+				if (ct.IsCancellationRequested) return;
+
+				if (ob != null)
+				{
+					DateTime now = DateTime.Now;
+					decimal bestPrice = GetSellBestPrice(ob);
+					Candle.AddNewPrice(fiveMinCandle, bestPrice, now);
+					Candle.AddNewPrice(tenMinCandle, bestPrice, now);
+					Candle.AddNewPrice(fifteenMinCandle, bestPrice, now);
+
+					//fOutputSingleLine($"{fiveMinCandle.Low} {fiveMinCandle.High} {fiveMinCandle.startTime}"); //sidtodo remove
+
+					decimal fiveMinCandlePriceDropPercentage = Candle.PriceDropPercentage(fiveMinCandle);
+					decimal tenMinCandlePriceDropPercentage= Candle.PriceDropPercentage(tenMinCandle);
+					decimal fifteenMinCandlePriceDropPercentage = Candle.PriceDropPercentage(tenMinCandle);
+
+					fOutputSingleLine($"{Decimal.Round(fiveMinCandlePriceDropPercentage * 100,4)} {fiveMinCandle.High} {fiveMinCandle.Low}",false);
+
+					//fOutputSingleLine($"{fiveMinCandlePriceDropPercentage*100} {tenMinCandlePriceDropPercentage * 100} "+
+					//	$"{fifteenMinCandlePriceDropPercentage * 100}"); //sidtodo remove
+
+					if(dipCandle==null)
+					{
+
+						//const decimal fiveMinCandleTriggerPercentage = 0.0075M; // 0.75%
+						const decimal fiveMinCandleTriggerPercentage = 0.001M; // 0.1% //sidtodo comment
+
+						if ((Candle.HaveFullDataset(fiveMinCandle) && fiveMinCandlePriceDropPercentage >= fiveMinCandleTriggerPercentage /* 0.75% */) ||
+							(Candle.HaveFullDataset(tenMinCandle) && tenMinCandlePriceDropPercentage >= 0.013M /* 1.3% */) ||
+							(Candle.HaveFullDataset(fifteenMinCandle) && fifteenMinCandlePriceDropPercentage >= 0.018M /* 1.8% */)
+						)
+						{
+							fOutputSingleLine($"We are in a dip: {fiveMinCandlePriceDropPercentage} {tenMinCandlePriceDropPercentage} {fifteenMinCandlePriceDropPercentage}",true);
+
+							dipCandle = new CandleState(30 /* Seconds duration rolling */);
+						}
+					}
+
+					if (dipCandle != null)
+					{
+						Candle.AddNewPrice(dipCandle, bestPrice, now);
+						// Price is going back up?
+						//TODO potentially may want to check a percentage. i.e. high > open && %diff between high and open is 1% or something
+						if (Candle.HaveFullDataset(dipCandle) && dipCandle.Open == dipCandle.Low && dipCandle.Open < dipCandle.Close)
+						{
+							fOutputSingleLine($"Price is going back up: low={dipCandle.Low} open={dipCandle.Open} close={dipCandle.Close}, bestPrice={bestPrice}", true);
+
+							if (bestPrice < maxPrice)
+							{
+								await fDoTheBuy(000.1M, bestPrice); //sidtodo remove
+								//await fDoTheBuy(amountToTrade); //sidtodo uncomment
+								return;
+							}
+
+							// Clear the dip candle and wait for another dip or for it to dip further
+							dipCandle = null;
+						}
+					}
+					else if(optRebuyPrice>0)
+					{
+						// Check for rebuy
+						if (CheckIfPriceIsTriggered(bestPrice,triggerPriceArray,previousBestPrice))
+						{
+							await fDoTheBuy(amountToTrade, bestPrice);
+							return;
+						}
+					}
+
+					previousBestPrice = bestPrice;
+				}
+
+				if (ct.IsCancellationRequested) return;
+				await Task.Delay(500);
+			} while (true);
 		}
 
 		// SELLMATPRICE [funds/all/half/third/quarter] [price CSV]
@@ -646,52 +889,64 @@ namespace CoinbaseProToolsForm
 				if (ob != null)
 				{
 					decimal curBestPrice = fGetBestPrice(ob);
-					if (previousBestPrice != 0 && previousBestPrice!= curBestPrice)
+
+					if(CheckIfPriceIsTriggered(curBestPrice, priceArray, previousBestPrice))
 					{
-						var priceHasIncreased = (curBestPrice > previousBestPrice);
-						foreach (var iterTriggerPrice in priceArray)
+						fEnableNetworkTraffic(false);
+
+						try
 						{
-							bool priceIsTriggered;
-							if (priceHasIncreased)
-							{
-								priceIsTriggered = (curBestPrice >= iterTriggerPrice && iterTriggerPrice > previousBestPrice);
-							}
-							else
-							{
-								priceIsTriggered = (curBestPrice <= iterTriggerPrice && iterTriggerPrice < previousBestPrice);
-							}
-
-							if (priceIsTriggered)
-							{
-								fEnableNetworkTraffic(false);
-
-								try
-								{
-									//sidtodo uncomment await RepeatUntilHaveInternet(()=> fTradeCmd(amountToTrade));
-									var text = $"Successful market {buySellStr} at {prodInfo.fSpeakPrice(curBestPrice)}.";
-									EventOutput(new EventOutput[] {new EventOutput(text,null) });
-									Library.AsyncSpeak(text);
-								}
-#pragma warning disable 168
-								catch (Exception e)
-#pragma warning restore 168
-								{
-									Library.AsyncSpeak($"Failed to market {buySellStr} due to an unexpected exception.");
-								}
-
-								await wob.Stop();
-								fEnableNetworkTraffic(true);
-								await fClearInProgressCmd();
-								return;
-							}
+							await RepeatUntilHaveInternet(()=> fTradeCmd(amountToTrade));
+							var text = $"Successful market {buySellStr} at {prodInfo.fSpeakPrice(curBestPrice)}.";
+							EventOutput(new EventOutput[] {new EventOutput(text,null) });
+							Library.AsyncSpeak(text);
 						}
-					}
+#pragma warning disable 168
+						catch (Exception e)
+#pragma warning restore 168
+						{
+							Library.AsyncSpeak($"Failed to market {buySellStr} due to an unexpected exception.");
+						}
 
+						await wob.Stop();
+						fEnableNetworkTraffic(true);
+						await fClearInProgressCmd();
+						return;
+					}
 					previousBestPrice = curBestPrice;
 				}
 
 				await Task.Delay(500);
 			} while (true);
+		}
+
+
+		private static bool CheckIfPriceIsTriggered(
+			decimal curBestPrice, IEnumerable<decimal> triggerPriceArray,
+			decimal previousBestPrice)
+		{
+			if (previousBestPrice != 0 && previousBestPrice != curBestPrice)
+			{
+				var priceHasIncreased = (curBestPrice > previousBestPrice);
+				foreach (var iterTriggerPrice in triggerPriceArray)
+				{
+					bool priceIsTriggered;
+					if (priceHasIncreased)
+					{
+						priceIsTriggered = (curBestPrice >= iterTriggerPrice && iterTriggerPrice > previousBestPrice);
+					}
+					else
+					{
+						priceIsTriggered = (curBestPrice <= iterTriggerPrice && iterTriggerPrice < previousBestPrice);
+					}
+
+					if (priceIsTriggered)
+					{
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		// BUYM [funds]

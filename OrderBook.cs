@@ -349,7 +349,7 @@ namespace CoinbaseProToolsForm
 				return rv;
 			};
 
-			webSocketState.onWebSocketError= (sender, e) => WebSocket_OnWebSocketError(e, handleExceptions);
+			webSocketState.onWebSocketError= (sender, e) => WebSocket_OnWebSocketError(e, handleExceptions, webSocketState);
 			webSocket.OnWebSocketError += webSocketState.onWebSocketError;
 
 			webSocketState.onLevel2Received = (sender, args) =>
@@ -367,8 +367,17 @@ namespace CoinbaseProToolsForm
 		}
 
 		private static void WebSocket_OnWebSocketError(WebfeedEventArgs<SuperSocket.ClientEngine.ErrorEventArgs> e,
-			Action<Exception> handleExceptions)
+			Action<Exception> handleExceptions, WebSocketState wss)
 		{
+			if (Misc.IsNoInternetException(e.LastOrder.Exception))
+			{
+				var now = DateTime.Now;
+				if ((now - wss.lastComplainedNoInternet).TotalSeconds >= 30)
+				{
+					wss.lastComplainedNoInternet = now;
+					Library.AsyncSpeak("No internet.");
+				}
+			}
 			handleExceptions(e.LastOrder.Exception);
 		}
 

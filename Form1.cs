@@ -361,7 +361,8 @@ namespace CoinbaseProToolsForm
 						StringCompareNoCase(cmdSplit[0], "BUYM") ||
 						StringCompareNoCase(cmdSplit[0], "SELLM") ||
 						StringCompareNoCase(cmdSplit[0], "BUYMATPRICE") ||
-						StringCompareNoCase(cmdSplit[0], "SELLMATPRICE")) // Trade watch
+						StringCompareNoCase(cmdSplit[0], "SELLMATPRICE") ||
+						StringCompareNoCase(cmdSplit[0], "BUYTHEDIP")) // Trade watch
 					{
 						output = await TradeWatch.CmdLine(cbClient, cmdSplit, eventOutputter,
 							this.getProductStatsInTheBkg,

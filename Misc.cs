@@ -27,6 +27,20 @@ namespace CoinbaseProToolsForm
 			return ts.ToString(((full)?"HH:mm:ss":"HH:mm"));
 		}
 
+		public static string[] GetPriceCmdLine(string[] cmdSplit, int idx,
+			string errorMsgDescribePrice,out decimal price)
+		{
+			var priceStr = cmdSplit[idx];
+			decimal.TryParse(priceStr, out price);
+
+			if (price <= 0)
+			{
+				return new string[] { $"Invalid {errorMsgDescribePrice} price: {price}." };
+			}
+
+			return null;
+		}
+
 		public static string[] GetPriceOrPercentageCmdLine(string[] cmdSplit, int idx,
 			string errorMsgDescribePrice,decimal currentPrice, decimal mustBeWithinPercentageOptional,
 			decimal defaultPricePercentage,
@@ -88,9 +102,12 @@ namespace CoinbaseProToolsForm
 
 		public static bool IsNoInternetException(Exception e)
 		{
-			var msg = e.ToString();
+			var msg = e.ToString().ToLower();
 			if (msg.IndexOf("hostname") >=0 ||
-				msg.IndexOf("resolved") >= 0)
+				msg.IndexOf("resolved") >= 0 ||
+				msg.IndexOf("no such host")>=0 ||
+					(msg.IndexOf("connection")>=0 && msg.IndexOf("failed")>=0)
+			)
 			{
 				return true;
 			}

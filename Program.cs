@@ -45,6 +45,7 @@ namespace CoinbaseProToolsForm
 		// The products to monitor
 		static public readonly ProductType[] products = new ProductType[] {
 			ProductType.LinkGbp,
+			ProductType.BtcGbp,
 #if !DEBUG
 			//ProductType.AlgoGbp,
 			//ProductType.GrtGbp,
