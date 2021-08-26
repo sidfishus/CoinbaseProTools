@@ -52,14 +52,14 @@ namespace CoinbaseProToolsForm
 			{
 				try
 				{
-					trades = await cbClient.ProductsService.GetTradesAsync(product,
-						100, numPages);
+					trades = await TradeWatch.GetTradesAsync(cbClient, product, 100, numPages);
 				}
 				catch (Exception e)
 				{
 					WriteExceptions(e);
 				}
 			}
+
 			return trades;
 		}
 
@@ -70,10 +70,10 @@ namespace CoinbaseProToolsForm
 		{
 			var prodInfo = Products.productInfo[productType];
 #if DEBUG
-			int numPagesForApprox24Hours = (int)(prodInfo.numPagesForApprox24Hour/4); // An hour or so.
+			int numPagesForApprox24Hours = (int)(prodInfo.numPagesForApprox24Hour/12); // An hour or so.
 			//int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
 #else
-			int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour*8; // Approx one day
+			int numPagesForApprox24Hours = prodInfo.numPagesForApprox24Hour; // Approx one day
 #endif
 			//const int numPagesForApprox24Hours = 120; //Approx 3 days
 			//const int numPagesForApprox24Hours = 240; //Approx 6 days
@@ -434,7 +434,7 @@ namespace CoinbaseProToolsForm
 						{
 							var previousLevel = level / TradeSummary.summaryPeriodGrowFactor;
 							tradeSummary = TradeSummary.CreateTradeSummary(tradeHistory.tradeSummaries[previousLevel],
-								startTime.AddSeconds(summaryPeriodTotalTimeSeconds));
+								startTime.AddSeconds(summaryPeriodTotalTimeSeconds)).Item1;
 						}
 						else
 						{

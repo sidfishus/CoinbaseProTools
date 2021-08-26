@@ -46,7 +46,7 @@ namespace CoinbaseProToolsForm
 
 					try
 					{
-						trades = await cbClient.ProductsService.GetTradesAsync(productType, ((amountOfPagesToLoad==1)?50:100), amountOfPagesToLoad);
+						trades = await TradeWatch.GetTradesAsync(cbClient, productType, ((amountOfPagesToLoad==1)?50:100), amountOfPagesToLoad);
 					}
 					catch (Exception e)
 					{

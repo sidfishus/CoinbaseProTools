@@ -44,10 +44,10 @@ namespace CoinbaseProToolsForm
 	{
 		// The products to monitor
 		static public readonly ProductType[] products = new ProductType[] {
-			ProductType.LinkGbp,
+			//ProductType.LinkGbp,
 			ProductType.BtcGbp,
 #if !DEBUG
-			//ProductType.AlgoGbp,
+			ProductType.AlgoGbp,
 			//ProductType.GrtGbp,
 			//ProductType.CgldGbp,
 			//ProductType.NuGbp,
@@ -111,7 +111,8 @@ namespace CoinbaseProToolsForm
 			Action<bool> fEnableNetworkTraffic = (enable) => networkTrafficEnabled = enable;
 			Func<bool> fNetworkTrafficEnabled = () => networkTrafficEnabled;
 
-			ProductType activeProduct = ProductType.LinkGbp;
+
+			ProductType activeProduct = products[0];
 			Func<ProductType> getActiveProduct = () => activeProduct;
 
 			ProductWideSetting rapidPriceChangeUpSetting = CreateProductWideSetting();
@@ -209,7 +210,7 @@ namespace CoinbaseProToolsForm
 					eventOutputter = form.eventOutputter;
 
 #if DEBUG
-					tradeHistoryInitialised = true; //sidtodo remove
+					tradeHistoryInitialised = false; //sidtodo remove
 #endif
 
 					if (!tradeHistoryInitialised)

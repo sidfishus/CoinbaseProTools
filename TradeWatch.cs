@@ -41,7 +41,7 @@ namespace CoinbaseProToolsForm
 	public static class TradeWatch
 	{
 
-		static readonly string s_ShowSummaryCmdLine= "tw showsummary [start date] <start time> [end date] <end time>";
+		static readonly string s_ShowSummaryCmdLine = "tw showsummary [start date] <start time> [end date] <end time>";
 		static readonly string s_BuyTheDipCmdLine =
 			"BUYTHEDIP <funds/all/half/third/quarter> <max price> [optional rebuy price]";
 
@@ -49,7 +49,7 @@ namespace CoinbaseProToolsForm
 			string[] cmdSplit, EventOutputter EventOutput,
 			Func<ProductStatsDictionary> getProdStats,
 			Action<Exception> HandleExceptions, TradeHistoryState tradeHistoryState,
-			Dictionary<ProductType,NewTradesTriggerList> newTradesTriggers,
+			Dictionary<ProductType, NewTradesTriggerList> newTradesTriggers,
 			Func<ProductType> getActiveProduct, Dictionary<ProductType, SLUpdateTriggerList> slUpdateTriggers,
 			LockedByRef<InProgressCommand> inProgressCmd, WebSocketState webSocketState,
 			Action<bool> fEnableNetworkTraffic)
@@ -241,12 +241,12 @@ namespace CoinbaseProToolsForm
 				fIsABetterPrice = (lhs, rhs) => (lhs < rhs);
 			}
 
-			Func<decimal, decimal> fMinOrMaxPrice=null;
+			Func<decimal, decimal> fMinOrMaxPrice = null;
 			if (minOrMaxPricePercentage != 0)
 			{
 				fMinOrMaxPrice = (initialPrice) =>
 					Decimal.Round(
-						fPriceAlteration(initialPrice,(initialPrice * minOrMaxPricePercentage)),
+						fPriceAlteration(initialPrice, (initialPrice * minOrMaxPricePercentage)),
 						prodInfo.priceNumDecimalPlaces
 					);
 			}
@@ -341,7 +341,7 @@ namespace CoinbaseProToolsForm
 			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic,
 			Accounts.Models.Account account, string minMaxPriceErrorString,
 			ProductInfo prodInfo, OrderSide orderSide, Func<OrderBookLevel2, decimal> fBestPrice,
-			Func<decimal,decimal,string> fSuccessMsg,Func<decimal,decimal,decimal> fAmountToTrade)
+			Func<decimal, decimal, string> fSuccessMsg, Func<decimal, decimal, decimal> fAmountToTrade)
 		{
 
 			using (await inProgressCmd.theLock.LockAsync(Timeout.InfiniteTimeSpan))
@@ -396,7 +396,7 @@ namespace CoinbaseProToolsForm
 
 				var sync = new LimitTaskSynchronisation();
 
-				Func<string> fSuccessMsgLocal = ()=>fSuccessMsg(sync.currentAmountToTrade, sync.currentPrice);
+				Func<string> fSuccessMsgLocal = () => fSuccessMsg(sync.currentAmountToTrade, sync.currentPrice);
 
 				Action fOnSuccess = async () =>
 				{
@@ -511,7 +511,7 @@ namespace CoinbaseProToolsForm
 		{
 			if (cmdSplit.Length != 3 && cmdSplit.Length != 4)
 			{
-				return new string[] { $"Invalid parameters: {s_BuyTheDipCmdLine}"};
+				return new string[] { $"Invalid parameters: {s_BuyTheDipCmdLine}" };
 			}
 
 			//// Amount to spend
@@ -541,7 +541,7 @@ namespace CoinbaseProToolsForm
 				{
 					return new string[] { "Error: Websocket is already in use." };
 				}
-				
+
 				////// Min fall percentage
 				//var minFallPercentageStr = cmdSplit[2];
 				//decimal minFallPercentage = 0.01M; // 1%
@@ -561,7 +561,7 @@ namespace CoinbaseProToolsForm
 				if (rv != null) return rv;
 
 				//// Rebuy price
-				decimal optRebuyPrice=0;
+				decimal optRebuyPrice = 0;
 				if (cmdSplit.Length == 4)
 				{
 					rv = GetPriceCmdLine(cmdSplit, 3, "rebuy price", out optRebuyPrice);
@@ -610,48 +610,49 @@ namespace CoinbaseProToolsForm
 			decimal optRebuyPrice, Action<Exception> fHandleExceptions)
 		{
 
-			Action<string,bool> fOutputSingleLine = (text,speak) =>
-			{
-				EventOutput(new EventOutput[] { new EventOutput(text,null)});
-				if (speak) Library.AsyncSpeak(text);
-			};
+			Action<string, bool> fOutputSingleLine = (text, speak) =>
+			 {
+				 EventOutput(new EventOutput[] { new EventOutput(text, null) });
+				 if (speak) Library.AsyncSpeak(text);
+			 };
 
 			ProductInfo prodInfo = Products.productInfo[product];
 
-			Func<decimal,decimal,Task> fDoTheBuy = async (amount, price) =>
-			{
-				fEnableNetworkTraffic(false);
+			Func<decimal, decimal, Task> fDoTheBuy = async (amount, price) =>
+			  {
 
-				try
-				{
-					await RepeatUntilHaveInternet(() => Orders.BuyMarket(cbClient, amount, product, fHandleExceptions, true));
-					var text = $"Successful market buy at {prodInfo.fSpeakPrice(price)}.";
-					fOutputSingleLine(text, true);
-				}
+				  fEnableNetworkTraffic(false);
+
+				  try
+				  {
+					  await RepeatUntilHaveInternet(() => Orders.BuyMarket(cbClient, amount, product, fHandleExceptions, true));
+					  var text = $"Successful market buy at {prodInfo.fSpeakPrice(price)}.";
+					  fOutputSingleLine(text, true);
+				  }
 #pragma warning disable 168
 				catch (Exception e)
 #pragma warning restore 168
 				{
-					Library.AsyncSpeak($"Failed to market buy due to an unexpected exception.");
-				}
+					  Library.AsyncSpeak($"Failed to market buy due to an unexpected exception.");
+				  }
 
-				await wob.Stop();
+				  await wob.Stop();
 
-				await fClearInProgressCmd();
+				  await fClearInProgressCmd();
 
-				fEnableNetworkTraffic(true);
-			};
+				  fEnableNetworkTraffic(true);
+			  };
 
 			await Task.Delay(1000); // Give the order book enough time to kick in
 
-			var fiveMinCandle=new CandleState(1*60); //sidtodo change to 5 mins
-			var tenMinCandle= new CandleState(10*60);
-			var fifteenMinCandle=new CandleState(15*60);
+			var fiveMinCandle = new CandleState(5 * 60);
+			var tenMinCandle = new CandleState(10 * 60);
+			var fifteenMinCandle = new CandleState(15 * 60);
 
 			CandleState dipCandle = null;
 
 			decimal previousBestPrice = 0;
-			decimal[] triggerPriceArray = new decimal[] { optRebuyPrice};
+			decimal[] triggerPriceArray = new decimal[] { optRebuyPrice };
 
 			do
 			{
@@ -672,27 +673,33 @@ namespace CoinbaseProToolsForm
 					//fOutputSingleLine($"{fiveMinCandle.Low} {fiveMinCandle.High} {fiveMinCandle.startTime}"); //sidtodo remove
 
 					decimal fiveMinCandlePriceDropPercentage = Candle.PriceDropPercentage(fiveMinCandle);
-					decimal tenMinCandlePriceDropPercentage= Candle.PriceDropPercentage(tenMinCandle);
-					decimal fifteenMinCandlePriceDropPercentage = Candle.PriceDropPercentage(tenMinCandle);
+#if DEBUG
+					if (fiveMinCandlePriceDropPercentage == 0)
+					{
+					}
+#endif
+					decimal tenMinCandlePriceDropPercentage = Candle.PriceDropPercentage(tenMinCandle);
+					decimal fifteenMinCandlePriceDropPercentage = Candle.PriceDropPercentage(fifteenMinCandle);
 
-					fOutputSingleLine($"{Decimal.Round(fiveMinCandlePriceDropPercentage * 100,4)} {fiveMinCandle.High} {fiveMinCandle.Low}",false);
+					//fOutputSingleLine($"{Decimal.Round(fiveMinCandlePriceDropPercentage * 100,4)} {fiveMinCandle.High} {fiveMinCandle.Low}",false);
 
 					//fOutputSingleLine($"{fiveMinCandlePriceDropPercentage*100} {tenMinCandlePriceDropPercentage * 100} "+
 					//	$"{fifteenMinCandlePriceDropPercentage * 100}"); //sidtodo remove
 
-					if(dipCandle==null)
+					if (dipCandle == null)
 					{
 
-						//const decimal fiveMinCandleTriggerPercentage = 0.0075M; // 0.75%
-						const decimal fiveMinCandleTriggerPercentage = 0.001M; // 0.1% //sidtodo comment
+						const decimal fiveMinCandleTriggerPercentage = 0.01M; // 1%
 
-						if ((Candle.HaveFullDataset(fiveMinCandle) && fiveMinCandlePriceDropPercentage >= fiveMinCandleTriggerPercentage /* 0.75% */) ||
-							(Candle.HaveFullDataset(tenMinCandle) && tenMinCandlePriceDropPercentage >= 0.013M /* 1.3% */) ||
-							(Candle.HaveFullDataset(fifteenMinCandle) && fifteenMinCandlePriceDropPercentage >= 0.018M /* 1.8% */)
+						if (fiveMinCandlePriceDropPercentage >= fiveMinCandleTriggerPercentage &&
+							(tenMinCandlePriceDropPercentage >= 0.015M /* 1.5% */ ||
+							fifteenMinCandlePriceDropPercentage >= 0.019M /* 1.9% */)
 						)
 						{
-							fOutputSingleLine($"We are in a dip: {fiveMinCandlePriceDropPercentage} {tenMinCandlePriceDropPercentage} {fifteenMinCandlePriceDropPercentage}",true);
+							fEnableNetworkTraffic(false);
+							fOutputSingleLine($"We are in a dip: {fiveMinCandlePriceDropPercentage} {tenMinCandlePriceDropPercentage} {fifteenMinCandlePriceDropPercentage}", true);
 
+							//sidtodo 30 seconds need to be cleverer - based on trades
 							dipCandle = new CandleState(30 /* Seconds duration rolling */);
 						}
 					}
@@ -706,21 +713,22 @@ namespace CoinbaseProToolsForm
 						{
 							fOutputSingleLine($"Price is going back up: low={dipCandle.Low} open={dipCandle.Open} close={dipCandle.Close}, bestPrice={bestPrice}", true);
 
-							if (bestPrice < maxPrice)
+							if (dipCandle.Low < maxPrice)
 							{
 								await fDoTheBuy(000.1M, bestPrice); //sidtodo remove
-								//await fDoTheBuy(amountToTrade); //sidtodo uncomment
+																	//await fDoTheBuy(amountToTrade); //sidtodo uncomment
 								return;
 							}
 
 							// Clear the dip candle and wait for another dip or for it to dip further
+							fEnableNetworkTraffic(true);
 							dipCandle = null;
 						}
 					}
-					else if(optRebuyPrice>0)
+					else if (optRebuyPrice > 0)
 					{
 						// Check for rebuy
-						if (CheckIfPriceIsTriggered(bestPrice,triggerPriceArray,previousBestPrice))
+						if (CheckIfPriceIsTriggered(bestPrice, triggerPriceArray, previousBestPrice))
 						{
 							await fDoTheBuy(amountToTrade, bestPrice);
 							return;
@@ -767,10 +775,10 @@ namespace CoinbaseProToolsForm
 			var prod = getActiveProduct();
 			var prodInfo = Products.productInfo[prod];
 
-			Func<decimal,Task<bool>> fBuyCmd = async (amountToSpend) =>
-			{
-				return await Orders.BuyMarket(cbClient, amountToSpend, prod, HandleExceptions, true);
-			};
+			Func<decimal, Task<bool>> fBuyCmd = async (amountToSpend) =>
+			 {
+				 return await Orders.BuyMarket(cbClient, amountToSpend, prod, HandleExceptions, true);
+			 };
 
 			// Note we are using 'GetSellBestPrice' because that's the price we will be BUYING at
 			return await BuySellMarketAtPrice(inProgressCmd, prodInfo.sourceCurrency, prodInfo.priceNumDecimalPlaces,
@@ -811,7 +819,7 @@ namespace CoinbaseProToolsForm
 				decimal iterPrice;
 				if (!Decimal.TryParse(trimmedPriceStr, out iterPrice))
 				{
-					return new string[] { $"Invalid price: {trimmedPriceStr}"};
+					return new string[] { $"Invalid price: {trimmedPriceStr}" };
 				}
 				priceArray.Add(iterPrice);
 			}
@@ -860,12 +868,12 @@ namespace CoinbaseProToolsForm
 				inProgressCmd.Ref.fCancel = fCancel;
 			}
 
-			return new string[] { "In progress.."};
+			return new string[] { "In progress.." };
 		}
 
 		async static Task BuySellMarketAtPriceTask(decimal amountToTrade, WatchOrderBookRes wob,
 			EventOutputter EventOutput, CoinbaseProClient cbClient,
-			OrderSide orderSide,CancellationToken ct, IEnumerable<decimal> priceArray,
+			OrderSide orderSide, CancellationToken ct, IEnumerable<decimal> priceArray,
 			Func<OrderBookLevel2, decimal> fGetBestPrice,
 			Action<bool> fEnableNetworkTraffic, Func<decimal, Task<bool>> fTradeCmd,
 			Func<Task> fClearInProgressCmd, string buySellStr,
@@ -890,15 +898,15 @@ namespace CoinbaseProToolsForm
 				{
 					decimal curBestPrice = fGetBestPrice(ob);
 
-					if(CheckIfPriceIsTriggered(curBestPrice, priceArray, previousBestPrice))
+					if (CheckIfPriceIsTriggered(curBestPrice, priceArray, previousBestPrice))
 					{
 						fEnableNetworkTraffic(false);
 
 						try
 						{
-							await RepeatUntilHaveInternet(()=> fTradeCmd(amountToTrade));
+							await RepeatUntilHaveInternet(() => fTradeCmd(amountToTrade));
 							var text = $"Successful market {buySellStr} at {prodInfo.fSpeakPrice(curBestPrice)}.";
-							EventOutput(new EventOutput[] {new EventOutput(text,null) });
+							EventOutput(new EventOutput[] { new EventOutput(text, null) });
 							Library.AsyncSpeak(text);
 						}
 #pragma warning disable 168
@@ -1005,7 +1013,7 @@ namespace CoinbaseProToolsForm
 			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
 			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
 		{
-			
+
 			var prod = getActiveProduct();
 			var prodInfo = Products.productInfo[prod];
 
@@ -1013,11 +1021,11 @@ namespace CoinbaseProToolsForm
 
 			var destAccount = await cbClient.AccountsService.GetAccountByIdAsync(destCurrencyId);
 
-			Func<decimal,decimal,string> fSuccessMsg = (amount, price) => $"Sold {amount} {prodInfo.spokenName} at " +
-					$"{prodInfo.fSpeakPrice(price)}";
+			Func<decimal, decimal, string> fSuccessMsg = (amount, price) => $"Sold {amount} {prodInfo.spokenName} at " +
+					  $"{prodInfo.fSpeakPrice(price)}";
 
-			Func<decimal,decimal,decimal> fAmountToSpend =
-				(currencyToSpend,price) => TruncateRound(currencyToSpend,prodInfo.volNumDecimalPlaces);
+			Func<decimal, decimal, decimal> fAmountToSpend =
+				(currencyToSpend, price) => TruncateRound(currencyToSpend, prodInfo.volNumDecimalPlaces);
 
 			return await BuySellLimit(cmdSplit, HandleExceptions,
 				prod, cbClient, EventOutput, inProgressCmd, webSocketState, fEnableNetworkTraffic,
@@ -1027,20 +1035,20 @@ namespace CoinbaseProToolsForm
 		static bool IsInvalidOrderId(Exception e)
 		{
 			var msgLower = e.Message.ToLower();
-			bool rv=
+			bool rv =
 				(msgLower.IndexOf("invalid") >= 0 ||
 				msgLower.IndexOf("not found") >= 0
 			);
 			return rv;
-		}	
-		
+		}
+
 		static async Task<GetOrderRes> GetOrder(
 			string serverOrderId, CoinbaseProClient cbClient)
 		{
 			try
 			{
 				var res = await cbClient.OrdersService.GetOrderByIdAsync(serverOrderId);
-				return new GetOrderRes(res,false);
+				return new GetOrderRes(res, false);
 			}
 			catch (Exception e)
 			{
@@ -1049,7 +1057,7 @@ namespace CoinbaseProToolsForm
 			}
 		}
 
-		static async Task<Tuple<bool,bool>> CancelOrderOneAttempt(string orderId,
+		static async Task<Tuple<bool, bool>> CancelOrderOneAttempt(string orderId,
 			CoinbaseProClient cbClient)
 		{
 			bool error = false;
@@ -1062,7 +1070,7 @@ namespace CoinbaseProToolsForm
 				bool isInvalidOrderId = IsInvalidOrderId(e);
 				if (isInvalidOrderId)
 				{
-					return new Tuple<bool,bool>(false,false);
+					return new Tuple<bool, bool>(false, false);
 				}
 
 				error = true;
@@ -1072,11 +1080,11 @@ namespace CoinbaseProToolsForm
 		}
 
 		//sidtodo here complain about no internet
-		async static Task LimitTask(Func<decimal,decimal> fAmountToTrade, Func<OrderBookLevel2> getOrderBook,
+		async static Task LimitTask(Func<decimal, decimal> fAmountToTrade, Func<OrderBookLevel2> getOrderBook,
 			EventOutputter EventOutput, ProductInfo prodInfo, CoinbaseProClient cbClient,
 			Func<OrderBookLevel2, decimal, decimal> fGetOurPrice, OrderSide orderSide,
 			Action fOnSuccess, Func<OrderBookLevel2, decimal> fBestPrice,
-			LimitTaskSynchronisation synchronisation,CancellationToken ct)
+			LimitTaskSynchronisation synchronisation, CancellationToken ct)
 		{
 
 			await Task.Delay(1000); // Give the order book enough time to kick in
@@ -1100,7 +1108,7 @@ namespace CoinbaseProToolsForm
 
 					bool cancelThePrice = (ourCurrentPrice != 0 && newPrice != ourCurrentPrice);
 					setThePrice = (ourCurrentPrice == 0 || newPrice != ourCurrentPrice);
-					
+
 					using (await synchronisation.theLock.LockAsync(Timeout.InfiniteTimeSpan))
 					{
 						if (ct.IsCancellationRequested) return;
@@ -1119,7 +1127,7 @@ namespace CoinbaseProToolsForm
 								if (!errorSending) synchronisation.currentOrderId = null;
 							}
 						}
-						else if(synchronisation.currentOrderId!=null)
+						else if (synchronisation.currentOrderId != null)
 						{
 							var getOrderRes = await GetOrder(synchronisation.currentOrderId, cbClient);
 							errorSending = getOrderRes.Item2;
@@ -1197,22 +1205,22 @@ namespace CoinbaseProToolsForm
 			Action<Exception> HandleExceptions, Func<ProductStatsDictionary> getProdStats,
 			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient,
 			EventOutputter EventOutput, LockedByRef<InProgressCommand> inProgressCmd,
-			WebSocketState webSocketState,Action<bool> fEnableNetworkTraffic)
+			WebSocketState webSocketState, Action<bool> fEnableNetworkTraffic)
 		{
 
 			var prod = getActiveProduct();
 			var prodInfo = Products.productInfo[prod];
 
-			var sourceCurrencyId= Currency.CurrencyId(prodInfo.sourceCurrency);
+			var sourceCurrencyId = Currency.CurrencyId(prodInfo.sourceCurrency);
 
 			var sourceAccount = await cbClient.AccountsService.GetAccountByIdAsync(sourceCurrencyId);
 
 			Func<decimal, decimal, string> fSuccessMsg = (amount, price) => $"Bought {amount} {prodInfo.spokenName} at " +
 					  $"{prodInfo.fSpeakPrice(price)}";
-			
+
 			Func<decimal, decimal, decimal> fAmountToBuy = (currencyToSpend, price) =>
 			{
-				decimal amount= TruncateRound(currencyToSpend / price, prodInfo.volNumDecimalPlaces);
+				decimal amount = TruncateRound(currencyToSpend / price, prodInfo.volNumDecimalPlaces);
 				return amount;
 			};
 
@@ -1229,14 +1237,14 @@ namespace CoinbaseProToolsForm
 			Func<ProductType> getActiveProduct, CoinbaseProClient cbClient)
 		{
 
-			if (cmdSplit.Length != 6 && cmdSplit.Length!=4) return new string[] { $"Invalid parameters: {s_ShowSummaryCmdLine}"};
+			if (cmdSplit.Length != 6 && cmdSplit.Length != 4) return new string[] { $"Invalid parameters: {s_ShowSummaryCmdLine}" };
 
 			bool includeDate = cmdSplit.Length == 6;
 
 			DateTime? startTime = ReadTimestamp(includeDate, cmdSplit, 2);
-			if(startTime==null) return new string[] { "Invalid start time" };
+			if (startTime == null) return new string[] { "Invalid start time" };
 
-			DateTime? endTime = ReadTimestamp(includeDate, cmdSplit, ((includeDate)?4:3));
+			DateTime? endTime = ReadTimestamp(includeDate, cmdSplit, ((includeDate) ? 4 : 3));
 			if (endTime == null) return new string[] { "Invalid end time" };
 
 			var product = getActiveProduct();
@@ -1245,14 +1253,14 @@ namespace CoinbaseProToolsForm
 		}
 
 		private static async Task<IEnumerable<string>> ShowTrades(string[] cmdSplit,
-			TradeHistoryState tradeHistoryState, 
+			TradeHistoryState tradeHistoryState,
 			Action<Exception> HandleExceptions, CoinbaseProClient cbClient,
-			Func<decimal,decimal,bool> includeOnlyOptional, Func<ProductType> getActiveProduct)
+			Func<decimal, decimal, bool> includeOnlyOptional, Func<ProductType> getActiveProduct)
 		{
 			int numPages;
 			if (int.TryParse(cmdSplit[2], out numPages))
 			{
-				return await TradeHistory.GetTrades(getActiveProduct(),numPages, HandleExceptions, cbClient,
+				return await TradeHistory.GetTrades(getActiveProduct(), numPages, HandleExceptions, cbClient,
 					includeOnlyOptional);
 			}
 			else
@@ -1270,7 +1278,7 @@ namespace CoinbaseProToolsForm
 			{
 
 				var prodStatsDictionary = getProdStats();
-				ProductStats prodStats=null;
+				ProductStats prodStats = null;
 				if (prodStatsDictionary != null)
 				{
 					prodStatsDictionary.TryGetValue(productType, out prodStats);
@@ -1518,6 +1526,26 @@ namespace CoinbaseProToolsForm
 
 			TradeHistory.Test(cbClient, EventOutput, trades, slUpdateTriggers[prod],
 				HandleExceptions, newTradesTriggers[prod], prod, getProductStats);
+		}
+
+		public static async Task<IList<IList<CBProductTrade>>> GetTradesAsync(CoinbaseProClient cbClient,
+			ProductType productType, int numTradesPerPage, int numPages)
+		{
+			var trades = await cbClient.ProductsService.GetTradesAsync(productType, numTradesPerPage, numPages);
+			if (trades != null)
+			{
+				// Convert the dates from UTC to the local time!!
+				for (var pageIdx = 0; pageIdx < trades.Count; ++pageIdx)
+				{
+					var page = trades[pageIdx];
+					for (var tradeIdx = 0; tradeIdx < page.Count; ++tradeIdx)
+					{
+						page[tradeIdx].Time = page[tradeIdx].Time.ToLocalTime();
+					}
+				}
+			}
+
+			return trades;
 		}
 	}
 }

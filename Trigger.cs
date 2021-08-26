@@ -1,34 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using TradeSummaryLevels = System.Collections.Generic.Dictionary<int /* Summary period in units */, CoinbaseProToolsForm.TradeSummaryState>;
-using ProductStatsDictionary = System.Collections.Generic.Dictionary<CoinbasePro.Shared.Types.ProductType, CoinbasePro.Services.Products.Types.ProductStats>;
-using ExceptionFileWriter = System.Action<string>;
-using ExceptionUIWriter = System.Action<string>;
-using EventOutputter = System.Action<System.Collections.Generic.IEnumerable<System.Tuple<string, System.DateTimeOffset?>>>;
-using EventOutput = System.Tuple<string, System.DateTimeOffset?>;
-using ProductType = CoinbasePro.Shared.Types.ProductType;
+using System.IO;
+using Newtonsoft.Json;
+using static CoinbaseProToolsForm.Library;
+using static CoinbaseProToolsForm.Products;
+using AddNewTradeTrigger = System.Action<CoinbasePro.Shared.Types.ProductType, CoinbaseProToolsForm.NewTradesTriggerState>;
+using AddSLUpdateTrigger = System.Action<CoinbasePro.Shared.Types.ProductType, CoinbaseProToolsForm.SLUpdateTriggerState>;
 using CBProductTrade = CoinbasePro.Services.Products.Models.ProductTrade;
+using Debug = System.Diagnostics.Debug;
+using EventOutput = System.Tuple<string, System.DateTimeOffset?>;
+using EventOutputter = System.Action<System.Collections.Generic.IEnumerable<System.Tuple<string, System.DateTimeOffset?>>>;
 using FindRecentTradesCallback = System.Func<CoinbasePro.Services.Products.Models.ProductTrade,
 	CoinbasePro.Services.Products.Models.ProductTrade,
 	System.Tuple<bool /* Matches */, bool /* Stop? */, bool /* Move along outer index? */, object /* User data */>>;
 using FindRecentTradesCallbackRv = System.Tuple<bool /* Matches */, bool /* Stop? */,
 	bool /* Move along outer index? */, object /* User result data */>;
-using OrderSide = CoinbasePro.Services.Orders.Types.OrderSide;
 using MatchingRecentTrades = System.Tuple<int /* Outer index */, int /* Inner index */, object /* User data */>;
+using OrderSide = CoinbasePro.Services.Orders.Types.OrderSide;
+using ProductStatsDictionary = System.Collections.Generic.Dictionary<CoinbasePro.Shared.Types.ProductType, CoinbasePro.Services.Products.Types.ProductStats>;
+using ProductType = CoinbasePro.Shared.Types.ProductType;
 using RapidPriceChangeTriggerUserData = System.Tuple<int, decimal>;
-using static CoinbaseProToolsForm.Products;
-using static CoinbaseProToolsForm.Library;
-using AddSLUpdateTrigger=System.Action<CoinbasePro.Shared.Types.ProductType, CoinbaseProToolsForm.SLUpdateTriggerState>;
-using AddNewTradeTrigger = System.Action<CoinbasePro.Shared.Types.ProductType, CoinbaseProToolsForm.NewTradesTriggerState>;
 using RemoveNewTradeTrigger = System.Action<CoinbasePro.Shared.Types.ProductType,
 	CoinbaseProToolsForm.NewTradesTriggerList,
 	int[]>;
-using System.IO;
-using Newtonsoft.Json;
-using Debug = System.Diagnostics.Debug;
+using TradeSummaryLevels = System.Collections.Generic.Dictionary<int /* Summary period in units */, CoinbaseProToolsForm.TradeSummaryState>;
 
 namespace CoinbaseProToolsForm
 {
@@ -170,6 +165,34 @@ namespace CoinbaseProToolsForm
 					}
 				}
 			}
+		}
+
+		public static SLUpdateTriggerState VolumeChangeTrigger(ProductType product, decimal percentageChange,
+			int level, int numToAverageFrom)
+		{
+			var rule = new SLUpdateTriggerState();
+			rule.TriggerFunc = (summaryLevels, getProdStats, tsOfEvent) =>
+			{
+				TradeSummaryState entireHistory;
+				if (!summaryLevels.TryGetValue(level, out entireHistory)) return null;
+
+				//// Create a summary for the requested period minus the current period
+				//sidtodo test this skips the current one
+				var summarised = TradeSummary.CreateTradeSummary(entireHistory, entireHistory.timeStart, numToAverageFrom);
+				if (!summarised.Item2) return null;
+
+				var latestSummary = entireHistory;
+				decimal avgVolumePast = (summarised.Item1.buyTotal+ summarised.Item1.sellTotal)/ numToAverageFrom;
+
+				decimal latestVolume=latestSummary.buyTotal+ latestSummary.sellTotal;
+
+				//avgVolumePast / latestVolume
+				//sidtodo here
+
+				return null;
+			};
+
+			return rule;
 		}
 
 		//TODO you could pass state between calls to the rules, to prevent expensive operations from being executed
@@ -1194,9 +1217,9 @@ namespace CoinbaseProToolsForm
 					{
 						previousPrice = trade.Price;
 
-						const int fiveMinsInSeconds = (60 * 5);
+						const int tenMinsInSeconds = (60 * 5);
 						goingUp = !goingUp;
-						trigger = ((trade.Time - lastSpeakTime).TotalSeconds >= fiveMinsInSeconds);
+						trigger = ((trade.Time - lastSpeakTime).TotalSeconds >= tenMinsInSeconds);
 						if (trigger)
 						{
 							var textToSay = $"{productInfo.spokenName} has reached {productInfo.fSpeakPrice(triggerPrice)}.";

@@ -70,7 +70,7 @@ namespace CoinbaseProToolsForm
 					var priceAndTime = candle.priceList[i];
 					if (priceAndTime.Item1 < candle.startTime)
 					{
-						candle.Open = candle.priceList[i].Item2;
+						candle.Open = candle.priceList[i+1].Item2;
 
 						// Remove this price and the ones below it
 						candle.priceList.RemoveRange(0, i+1);

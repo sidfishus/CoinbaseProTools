@@ -155,24 +155,29 @@ namespace CoinbaseProToolsForm
 			return summaryPeriodTotalTimeSeconds;
 		}
 
-		public static TradeSummaryState CreateTradeSummary(
-			TradeSummaryState tradeSummary, DateTimeOffset nextPeriodStart, int howFarToGoBack= summaryPeriodGrowFactor)
+		public static System.Tuple<TradeSummaryState,bool> CreateTradeSummary(
+			TradeSummaryState tradeSummary, DateTimeOffset nextPeriodStart,
+			int howFarToGoBack= summaryPeriodGrowFactor)
 		{
 			var summary = new TradeSummaryState();
 			var iterSummary = tradeSummary;
 
-			for (int i = 0; i < howFarToGoBack;)
+			bool weReachedTheEnd = false;
+
+			for (int i = 0; iterSummary!=null;)
 			{
 				if (iterSummary.timeStart < nextPeriodStart)
 				{
 					IncrementSummary(summary, iterSummary);
 					++i;
+					weReachedTheEnd = (i == howFarToGoBack);
+					if (weReachedTheEnd) break;
 				}
 
 				iterSummary = iterSummary.previous;
 			}
 
-			return summary;
+			return new Tuple<TradeSummaryState,bool>(summary,weReachedTheEnd);
 		}
 
 		public static void IncrementSummary(TradeSummaryState lhs, TradeSummaryState rhs)
